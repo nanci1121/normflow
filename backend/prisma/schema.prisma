@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  admin
+  owner
+  approver
+  reader
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  role         UserRole @default(reader)
+  passwordHash String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Document {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  title         String
+  description   String
+  category      String
+  standardTags  String[]
+  status        String   @default("draft")
+  ownerId       String
+  visibility    String   @default("internal")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  obsoleteReason String?
+
+  currentVersionId String
+
+  versions  DocumentVersion[]
+  approvals DocumentApproval[]
+  signatures String[]
+}
+
+model DocumentVersion {
+  id            String   @id @default(uuid())
+  number        Int
+  title         String
+  content       String
+  createdAt     DateTime @default(now())
+  createdBy     String
+  changeSummary String
+
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
+
+model DocumentApproval {
+  id         String    @id @default(uuid())
+  approverId String
+  status     String    @default("pending")
+  comment    String?
+  decidedAt  DateTime?
+
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@unique([documentId, approverId])
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  timestamp  DateTime @default(now())
+  actorId    String
+  action     String
+  entityType String
+  entityId   String
+  details    Json
+
+  @@index([entityId])
+  @@index([entityType])
+}

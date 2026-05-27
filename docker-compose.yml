@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: qms-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: qms
+      POSTGRES_PASSWORD: qms_secret
+      POSTGRES_DB: qms_platform
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - qms-network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: qms-pgadmin
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@qms.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - qms-network
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
+  pgadmin-data:
+
+networks:
+  qms-network:
+    driver: bridge
