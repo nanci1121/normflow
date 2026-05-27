@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "./db";
+import { Prisma } from "./generated/prisma/client";
 import {
   AuditEvent,
   CreateDocumentInput,
@@ -8,7 +9,16 @@ import {
   SubmitForApprovalInput,
   ResolveApprovalInput,
   SignDocumentInput,
+  HttpError,
+  DocumentStatus,
 } from "./types";
+
+const VALID_TRANSITIONS: Record<string, DocumentStatus[]> = {
+  submit: ["draft"],
+  approve: ["in_review"],
+  reject: ["in_review"],
+  obsolete: ["approved"],
+};
 
 function toIsoString(date: Date): string {
   return date.toISOString();
@@ -117,33 +127,41 @@ export class DocumentStore {
     const documentId = randomUUID();
     const versionId = randomUUID();
 
-    const document = await prisma.document.create({
-      data: {
-        id: documentId,
-        code: input.code,
-        title: input.title,
-        description: input.description,
-        category: input.category,
-        standardTags: input.standardTags,
-        ownerId: input.ownerId,
-        visibility: input.visibility ?? "internal",
-        currentVersionId: versionId,
-        versions: {
-          create: {
-            id: versionId,
-            number: 1,
-            title: input.title,
-            content: input.content,
-            createdBy: input.createdBy,
-            changeSummary: "Initial version",
+    let document;
+    try {
+      document = await prisma.document.create({
+        data: {
+          id: documentId,
+          code: input.code,
+          title: input.title,
+          description: input.description,
+          category: input.category,
+          standardTags: input.standardTags,
+          ownerId: input.ownerId,
+          visibility: input.visibility ?? "internal",
+          currentVersionId: versionId,
+          versions: {
+            create: {
+              id: versionId,
+              number: 1,
+              title: input.title,
+              content: input.content,
+              createdBy: input.createdBy,
+              changeSummary: "Initial version",
+            },
           },
         },
-      },
-      include: {
-        versions: { orderBy: { createdAt: "desc" } },
-        approvals: true,
-      },
-    });
+        include: {
+          versions: { orderBy: { createdAt: "desc" } },
+          approvals: true,
+        },
+      });
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new HttpError(409, "El código del documento ya existe");
+      }
+      throw error;
+    }
 
     await prisma.auditEvent.create({
       data: {
@@ -163,7 +181,7 @@ export class DocumentStore {
 
   async addVersion(documentId: string, input: AddVersionInput): Promise<DocumentRecord> {
     const document = await prisma.document.findUnique({ where: { id: documentId } });
-    if (!document) throw new Error(`Documento no encontrado: ${documentId}`);
+    if (!document) throw new HttpError(404, `Documento no encontrado: ${documentId}`);
 
     const versionCount = await prisma.documentVersion.count({ where: { documentId } });
     const versionId = randomUUID();
@@ -209,16 +227,26 @@ export class DocumentStore {
 
   async submitForApproval(documentId: string, input: SubmitForApprovalInput): Promise<DocumentRecord> {
     const document = await prisma.document.findUnique({ where: { id: documentId } });
-    if (!document) throw new Error(`Documento no encontrado: ${documentId}`);
+    if (!document) throw new HttpError(404, `Documento no encontrado: ${documentId}`);
+    if (!VALID_TRANSITIONS.submit.includes(document.status as DocumentStatus)) {
+      throw new HttpError(422, `No se puede enviar a revisión un documento en estado ${document.status}`);
+    }
 
-    await prisma.documentApproval.createMany({
-      data: input.approverIds.map((approverId) => ({
-        id: randomUUID(),
-        approverId,
-        status: "pending",
-        documentId,
-      })),
-    });
+    try {
+      await prisma.documentApproval.createMany({
+        data: input.approverIds.map((approverId) => ({
+          id: randomUUID(),
+          approverId,
+          status: "pending",
+          documentId,
+        })),
+      });
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new HttpError(409, "Uno o más aprobadores ya están asignados a este documento");
+      }
+      throw error;
+    }
 
     const updated = await prisma.document.update({
       where: { id: documentId },
@@ -235,7 +263,7 @@ export class DocumentStore {
         action: "document.submitted",
         entityId: documentId,
         entityType: "document",
-        details: { approvers: input.approverIds },
+        details: { from: "draft", to: "in_review", approvers: input.approverIds },
       },
     });
 
@@ -248,28 +276,32 @@ export class DocumentStore {
       include: { approvals: true },
     });
 
-    if (!document) throw new Error(`Documento no encontrado: ${documentId}`);
+    if (!document) throw new HttpError(404, `Documento no encontrado: ${documentId}`);
+    if (!VALID_TRANSITIONS.approve.includes(document.status as DocumentStatus) &&
+        !VALID_TRANSITIONS.reject.includes(document.status as DocumentStatus)) {
+      throw new HttpError(422, `No se puede resolver aprobación de un documento en estado ${document.status}`);
+    }
 
     const approval = document.approvals.find((a) => a.approverId === input.approverId);
-    if (!approval) throw new Error(`No existe una aprobación pendiente para ${input.approverId}`);
+    if (!approval) throw new HttpError(404, `No existe una aprobación pendiente para ${input.approverId}`);
 
     const now = new Date();
+    const isRejected = input.decision === "rejected";
+    const newStatus = isRejected ? "rejected" : "approved";
+
     await prisma.documentApproval.update({
       where: { id: approval.id },
       data: {
-        status: "approved",
+        status: newStatus,
         comment: input.comment,
         decidedAt: now,
       },
     });
 
-    const allApprovals = await prisma.documentApproval.findMany({ where: { documentId } });
-    const allApproved = allApprovals.every((a) => a.status === "approved");
-
     const updated = await prisma.document.update({
       where: { id: documentId },
       data: {
-        status: allApproved ? "approved" : undefined,
+        status: isRejected ? "draft" : undefined,
       },
       include: {
         versions: { orderBy: { createdAt: "desc" } },
@@ -277,22 +309,38 @@ export class DocumentStore {
       },
     });
 
+    const allApprovals = await prisma.documentApproval.findMany({ where: { documentId } });
+    const allApproved = allApprovals.every((a) => a.status === "approved");
+
+    if (!isRejected && allApproved) {
+      await prisma.document.update({
+        where: { id: documentId },
+        data: { status: "approved" },
+      });
+      updated.status = "approved";
+    }
+
     await prisma.auditEvent.create({
       data: {
         actorId: input.actorId,
-        action: "document.approved",
+        action: isRejected ? "document.rejected" : "document.approved",
         entityId: documentId,
         entityType: "document",
-        details: { approverId: input.approverId, comment: input.comment },
+        details: {
+          from: isRejected ? "in_review" : document.status,
+          to: isRejected ? "draft" : "approved",
+          approverId: input.approverId,
+          comment: input.comment,
+        },
       },
     });
 
-    return mapDocument(updated as never);
+    return mapDocument({ ...updated, status: updated.status } as never);
   }
 
   async signDocument(documentId: string, input: SignDocumentInput): Promise<DocumentRecord> {
     const document = await prisma.document.findUnique({ where: { id: documentId } });
-    if (!document) throw new Error(`Documento no encontrado: ${documentId}`);
+    if (!document) throw new HttpError(404, `Documento no encontrado: ${documentId}`);
 
     const signature = `${input.actorId}:${input.signatureValue}`;
     const updated = await prisma.document.update({
@@ -321,7 +369,13 @@ export class DocumentStore {
 
   async obsoleteDocument(documentId: string, actorId: string, reason: string): Promise<DocumentRecord> {
     const document = await prisma.document.findUnique({ where: { id: documentId } });
-    if (!document) throw new Error(`Documento no encontrado: ${documentId}`);
+    if (!document) throw new HttpError(404, `Documento no encontrado: ${documentId}`);
+    if (!reason || reason.trim().length === 0) {
+      throw new HttpError(422, "Se requiere un motivo para obsolecencia");
+    }
+    if (!VALID_TRANSITIONS.obsolete.includes(document.status as DocumentStatus)) {
+      throw new HttpError(422, `No se puede obsolecer un documento en estado ${document.status}`);
+    }
 
     const updated = await prisma.document.update({
       where: { id: documentId },
@@ -341,7 +395,7 @@ export class DocumentStore {
         action: "document.obsoleted",
         entityId: documentId,
         entityType: "document",
-        details: { reason },
+        details: { from: "approved", to: "obsolete", reason },
       },
     });
 

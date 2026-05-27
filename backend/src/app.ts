@@ -1,9 +1,9 @@
 import cors from "@fastify/cors";
 import Fastify from "fastify";
-import { AuthService, HttpError } from "./auth";
+import { AuthService } from "./auth";
 import { createUserSchema, authLoginSchema } from "./schemas";
 import { DocumentStore } from "./store";
-import { CreateUserInput, LoginInput } from "./types";
+import { CreateUserInput, HttpError, LoginInput } from "./types";
 
 export function buildApp() {
   const app = Fastify({ logger: true });
@@ -116,8 +116,13 @@ export function buildApp() {
       createdBy: string;
     };
 
-    const created = await store.createDocument(body);
-    return reply.code(201).send(created);
+    try {
+      const created = await store.createDocument(body);
+      return reply.code(201).send(created);
+    } catch (error) {
+      const handled = handleError(error, 400);
+      return reply.code(handled.statusCode).send({ message: handled.message });
+    }
   });
 
   app.post("/api/v1/documents/:id/versions", async (request, reply) => {
@@ -148,7 +153,7 @@ export function buildApp() {
     try {
       return await store.submitForApproval(id, body);
     } catch (error) {
-      const handled = handleError(error, 404);
+      const handled = handleError(error, 422);
       return reply.code(handled.statusCode).send({ message: handled.message });
     }
   });
@@ -158,6 +163,7 @@ export function buildApp() {
     const body = request.body as {
       actorId: string;
       approverId: string;
+      decision: "approved" | "rejected";
       comment?: string;
     };
 
@@ -194,7 +200,7 @@ export function buildApp() {
     try {
       return await store.obsoleteDocument(id, body.actorId, body.reason);
     } catch (error) {
-      const handled = handleError(error, 404);
+      const handled = handleError(error, 422);
       return reply.code(handled.statusCode).send({ message: handled.message });
     }
   });

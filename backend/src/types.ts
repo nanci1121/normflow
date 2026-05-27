@@ -6,6 +6,7 @@ export type AuditAction =
   | "document.version_added"
   | "document.submitted"
   | "document.approved"
+  | "document.rejected"
   | "document.signed"
   | "document.obsoleted";
 
@@ -102,7 +103,17 @@ export interface SubmitForApprovalInput {
 export interface ResolveApprovalInput {
   actorId: string;
   approverId: string;
+  decision: "approved" | "rejected";
   comment?: string;
+}
+
+export class HttpError extends Error {
+  constructor(
+    public readonly statusCode: number,
+    message: string
+  ) {
+    super(message);
+  }
 }
 
 export interface SignDocumentInput {

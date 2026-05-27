@@ -2,18 +2,9 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "./db";
 import { Prisma } from "./generated/prisma/client";
-import { CreateUserInput, LoginInput, PublicUser, UserRole } from "./types";
+import { CreateUserInput, HttpError, LoginInput, PublicUser, UserRole } from "./types";
 
 const JWT_EXPIRES_IN = "8h";
-
-export class HttpError extends Error {
-  constructor(
-    public readonly statusCode: number,
-    message: string
-  ) {
-    super(message);
-  }
-}
 
 interface TokenPayload {
   sub: string;
