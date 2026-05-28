@@ -26,12 +26,14 @@ function toPublicUser(user: {
   email: string;
   name: string;
   role: UserRole;
+  isActive: boolean;
 }): PublicUser {
   return {
     id: user.id,
     email: user.email,
     name: user.name,
     role: user.role,
+    isActive: user.isActive,
   };
 }
 
@@ -74,6 +76,7 @@ export class AuthService {
       email: user.email,
       name: user.name,
       role: user.role as UserRole,
+      isActive: user.isActive,
     });
   }
 
@@ -100,6 +103,7 @@ export class AuthService {
         email: created.email,
         name: created.name,
         role: created.role as UserRole,
+        isActive: created.isActive,
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -107,6 +111,30 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  async toggleUserActive(currentUserRole: UserRole, userId: string): Promise<PublicUser> {
+    if (currentUserRole !== "admin") {
+      throw new HttpError(403, "No autorizado");
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new HttpError(404, "Usuario no encontrado");
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { isActive: !user.isActive },
+    });
+
+    return toPublicUser({
+      id: updated.id,
+      email: updated.email,
+      name: updated.name,
+      role: updated.role as UserRole,
+      isActive: updated.isActive,
+    });
   }
 
   verifyToken(authorizationHeader?: string): TokenPayload {

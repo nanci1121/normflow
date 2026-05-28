@@ -1,63 +1,110 @@
 # QMS Platform Server
 
-Servidor base para una plataforma QMS orientada a la gestión documental, trazabilidad, aprobaciones, firmas y auditoría para ISO 9001, ISO 14001/14000 y PRL / ISO 45001.
+Backend API de la plataforma QMS. Implementa autenticacion, gestion documental, aprobaciones, firmas y auditoria.
 
-## Qué incluye
+## Stack
 
-- API REST en TypeScript con Fastify
-- Gestión de documentos con versiones
-- Flujos de aprobación
-- Firmas electrónicas simuladas
-- Registro de auditoría
-- Búsqueda simple por texto
-- Endpoint de salud y resumen operativo
+- Node.js 20+
+- TypeScript (CommonJS)
+- Fastify
+- Prisma + PostgreSQL
+- Vitest para tests
 
-## Requisitos
+## Responsabilidades principales
 
-- Node.js 20 o superior
+1. Autenticacion JWT y contexto de usuario.
+2. Gestion de usuarios (alta, listado, activacion/desactivacion).
+3. Gestion de documentos, versiones y ciclo de vida.
+4. Flujos de aprobacion configurables por categoria.
+5. Aprobacion secuencial con autorizacion por aprobador.
+6. Registro de auditoria y exportacion CSV/PDF.
+7. Envio de notificaciones por email (si SMTP esta configurado).
 
-## Instalación
+## Estructura relevante
 
-```bash
-npm install
-npm run prisma:generate
-```
+- [src/server.ts](src/server.ts): arranque del servidor
+- [src/app.ts](src/app.ts): declaracion de rutas HTTP
+- [src/store.ts](src/store.ts): reglas de negocio y persistencia
+- [src/auth.ts](src/auth.ts): login, JWT y control de acceso de usuarios
+- [src/schemas.ts](src/schemas.ts): schemas de validacion Fastify
+- [src/email](src/email): servicio SMTP y plantillas de notificacion
+- [src/export](src/export): exportacion de auditoria en CSV/PDF
+- [prisma/schema.prisma](prisma/schema.prisma): modelo de datos
 
-## Variables de entorno
+## Modelo de negocio
 
-Crear un archivo `.env` tomando como base `.env.example`.
+### Usuarios
 
-Variables obligatorias:
+- Roles: `admin`, `owner`, `approver`, `reader`.
+- Los usuarios tienen `isActive` para habilitar/deshabilitar acceso.
 
-- `DATABASE_URL`
-- `JWT_SECRET`
-- `ADMIN_EMAIL`
-- `ADMIN_NAME`
-- `ADMIN_PASSWORD`
+### Documentos
 
-## Desarrollo
+- Campos principales: `code`, `title`, `description`, `category`, `status`, `visibility`.
+- Visibilidad: `internal` o `restricted`.
+- Estado inicial: `draft`.
 
-```bash
-npm run prisma:migrate
-npm run prisma:seed
-npm run dev
-```
+### Ciclo de vida
 
-## Producción
+- `draft` -> `in_review` (submit)
+- `in_review` -> `approved` (si todos los pasos aprobados)
+- `in_review` -> `draft` (reject)
+- `approved` -> `obsolete` (con motivo obligatorio)
 
-```bash
-npm run build
-npm start
-```
+### Aprobaciones
 
-## Endpoints
+- Tabla `DocumentApproval` con `stepOrder`, `responsibility`, `status`.
+- Un aprobador no puede repetirse en el mismo documento.
+- Validacion de secuencia: no se permite aprobar fuera de orden.
+- Seguridad: solo el aprobador asignado decide; `admin` puede decidir en nombre de otro.
+
+### Flujos por categoria
+
+- `ApprovalWorkflow` y `ApprovalWorkflowStep` guardan listas de aprobadores por categoria.
+- Si submit no recibe `approverIds`, backend usa el flujo configurado para la categoria.
+
+### Auditoria
+
+- Toda accion clave genera `AuditEvent`.
+- Lectura por documento y exportacion a CSV/PDF.
+
+## API
+
+### Salud y overview
 
 - `GET /health`
 - `GET /api/v1/overview`
+
+### Auth
+
 - `POST /api/v1/auth/login`
 - `GET /api/v1/auth/me`
 - `POST /api/v1/auth/logout`
-- `POST /api/v1/users` (solo `admin`)
+
+### Usuarios
+
+- `POST /api/v1/users` (admin)
+- `GET /api/v1/users` (admin)
+- `PATCH /api/v1/users/:id/toggle-active` (admin)
+
+### Flujos de aprobacion
+
+- `GET /api/v1/approval-workflows` (admin)
+- `PUT /api/v1/approval-workflows/:category` (admin)
+
+Body de `PUT`:
+
+```json
+{
+	"steps": [
+		{ "approverId": "uuid", "responsibility": "Revision tecnica" },
+		{ "approverId": "uuid", "responsibility": "Aprobacion final" }
+	]
+}
+```
+
+### Documentos
+
 - `GET /api/v1/documents`
 - `POST /api/v1/documents`
 - `GET /api/v1/documents/:id`
@@ -67,16 +114,69 @@ npm start
 - `POST /api/v1/documents/:id/sign`
 - `POST /api/v1/documents/:id/obsolete`
 - `GET /api/v1/documents/:id/audit`
+- `GET /api/v1/documents/:id/audit/export?format=csv|pdf`
 
-## Siguiente paso recomendado
+Notas:
 
-Conectar una base de datos real, autenticación SSO/JWT y control de permisos por roles.
+- `submit`: `approverIds` es opcional. Si no se envia, se resuelve por flujo de categoria.
+- `approve`: el actor sale del JWT; en body solo van `approverId`, `decision`, `comment`.
 
-## Usuario administrador inicial
+## Variables de entorno
 
-Tras ejecutar `npm run prisma:seed`, se crea/actualiza un usuario admin.
+Base en [backend/.env.example](.env.example):
 
-- Email por defecto: `admin@qms.local`
-- Password por defecto: `Admin123!`
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `ADMIN_EMAIL`
+- `ADMIN_NAME`
+- `ADMIN_PASSWORD`
 
-Se recomienda cambiar estos valores en `.env` antes de desplegar.
+Email (opcional):
+
+- `EMAIL_HOST`
+- `EMAIL_PORT`
+- `EMAIL_SECURE`
+- `EMAIL_USER`
+- `EMAIL_PASS`
+- `EMAIL_FROM`
+- `EMAIL_REJECT_UNAUTHORIZED`
+
+## Desarrollo
+
+```bash
+npm install
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:seed
+npm run dev
+```
+
+## Build y ejecucion
+
+```bash
+npm run build
+npm start
+```
+
+## Tests
+
+```bash
+npm test
+```
+
+Suites destacadas:
+
+- [tests/integration/lifecycle.test.ts](tests/integration/lifecycle.test.ts)
+- [tests/integration/approval-workflows.test.ts](tests/integration/approval-workflows.test.ts)
+- [tests/integration/audit.test.ts](tests/integration/audit.test.ts)
+- [tests/integration/export.test.ts](tests/integration/export.test.ts)
+
+## Seed inicial
+
+Al ejecutar `npm run prisma:seed` se crean:
+
+1. Usuario admin configurable por variables de entorno.
+2. Usuario admin adicional de entorno de pruebas definido en seed.
+3. Usuarios aprobadores demo de calidad.
+
+Revisar y ajustar datos de [prisma/seed.ts](prisma/seed.ts) segun entorno.

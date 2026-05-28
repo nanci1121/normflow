@@ -23,6 +23,8 @@ export interface DocumentVersion {
 export interface DocumentApproval {
   id: string;
   approverId: string;
+  stepOrder?: number;
+  responsibility?: string;
   status: ApprovalStatus;
   comment?: string;
   decidedAt?: string;
@@ -62,6 +64,7 @@ export interface PublicUser {
   email: string;
   name: string;
   role: UserRole;
+  isActive: boolean;
 }
 
 export interface LoginInput {
@@ -97,11 +100,34 @@ export interface AddVersionInput {
 
 export interface SubmitForApprovalInput {
   actorId: string;
-  approverIds: string[];
+  approverIds?: string[];
+}
+
+export interface ApprovalWorkflowStepRecord {
+  id: string;
+  stepOrder: number;
+  approverId: string;
+  approverName: string;
+  approverEmail: string;
+  responsibility: string;
+}
+
+export interface ApprovalWorkflowRecord {
+  id: string;
+  category: string;
+  createdAt: string;
+  updatedAt: string;
+  steps: ApprovalWorkflowStepRecord[];
+}
+
+export interface ApprovalWorkflowStepInput {
+  approverId: string;
+  responsibility: string;
 }
 
 export interface ResolveApprovalInput {
   actorId: string;
+  actorRole: UserRole;
   approverId: string;
   decision: "approved" | "rejected";
   comment?: string;
@@ -119,4 +145,9 @@ export class HttpError extends Error {
 export interface SignDocumentInput {
   actorId: string;
   signatureValue: string;
+}
+
+export interface UserContext {
+  id: string;
+  role: UserRole;
 }

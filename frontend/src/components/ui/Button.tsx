@@ -2,7 +2,7 @@ import { forwardRef } from 'react'
 import { clsx } from 'clsx'
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'ghost' | 'danger'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline'
   size?: 'sm' | 'md' | 'lg'
   isLoading?: boolean
 }
@@ -17,15 +17,19 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || isLoading}
         className={clsx(
-          'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors',
+          'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-200',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2',
           'disabled:cursor-not-allowed disabled:opacity-50',
           {
-            'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800':
+            'bg-primary-600 text-white hover:bg-primary-700 active:scale-[0.97] active:bg-primary-800':
               variant === 'primary',
-            'text-gray-700 hover:bg-gray-100 active:bg-gray-200': variant === 'ghost',
-            'bg-red-600 text-white hover:bg-red-700 active:bg-red-800': variant === 'danger',
-            'h-8 px-3 text-sm': size === 'sm',
+            'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300':
+              variant === 'secondary',
+            'text-gray-600 hover:bg-gray-100 active:bg-gray-200': variant === 'ghost',
+            'bg-red-600 text-white hover:bg-red-700 active:scale-[0.97] active:bg-red-800': variant === 'danger',
+            'border-2 border-primary-600 text-primary-600 hover:bg-primary-50 active:bg-primary-100':
+              variant === 'outline',
+            'h-8 px-3 text-xs': size === 'sm',
             'h-10 px-4 text-sm': size === 'md',
             'h-12 px-6 text-base': size === 'lg',
           },

@@ -1,17 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { FileText, CheckCircle, Clock, Archive, Activity } from 'lucide-react'
 import { getOverview } from '@/api/documents'
-import type { AuditEvent } from '@/types'
-
-const STATUS_CONFIG: Record<
-  string,
-  { label: string; icon: typeof FileText; color: string; iconColor: string }
-> = {
-  draft:     { label: 'Borrador',    icon: FileText,    color: 'bg-gray-100',   iconColor: 'text-gray-500' },
-  in_review: { label: 'En revisión', icon: Clock,       color: 'bg-amber-50',   iconColor: 'text-amber-600' },
-  approved:  { label: 'Aprobado',    icon: CheckCircle, color: 'bg-green-50',   iconColor: 'text-green-600' },
-  obsolete:  { label: 'Obsoleto',    icon: Archive,     color: 'bg-red-50',     iconColor: 'text-red-500' },
-}
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { PageSkeleton } from '@/components/ui/LoadingSkeleton'
+import { Card, CardHeader } from '@/components/ui/Card'
+import type { AuditEvent, DocumentStatus } from '@/types'
 
 const ACTION_LABELS: Record<string, string> = {
   'document.created':       'Documento creado',
@@ -33,8 +26,8 @@ function timeAgo(isoDate: string): string {
 
 function AuditRow({ event }: { event: AuditEvent }) {
   return (
-    <li className="flex items-start gap-4 px-6 py-4">
-      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-50">
+    <li className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-gray-50">
+      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-50 ring-1 ring-primary-100">
         <Activity className="h-4 w-4 text-primary-600" />
       </div>
       <div className="min-w-0 flex-1">
@@ -52,6 +45,13 @@ function AuditRow({ event }: { event: AuditEvent }) {
   )
 }
 
+const STATUS_ITEMS: { status: DocumentStatus; icon: typeof FileText; color: string; iconColor: string }[] = [
+  { status: 'draft',     icon: FileText,    color: 'bg-gray-50',    iconColor: 'text-gray-500' },
+  { status: 'in_review', icon: Clock,       color: 'bg-amber-50',   iconColor: 'text-amber-600' },
+  { status: 'approved',  icon: CheckCircle, color: 'bg-green-50',   iconColor: 'text-green-600' },
+  { status: 'obsolete',  icon: Archive,     color: 'bg-red-50',     iconColor: 'text-red-500' },
+]
+
 export function DashboardPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['overview'],
@@ -59,24 +59,24 @@ export function DashboardPage() {
     refetchInterval: 30_000,
   })
 
-  if (isLoading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
-      </div>
-    )
-  }
-
+  if (isLoading) return <PageSkeleton />
   if (isError) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-red-500">
-        Error al cargar el resumen. Verifica que el servidor está en marcha.
+      <div className="flex h-full items-center justify-center">
+        <div className="card p-8 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+            <Activity className="h-6 w-6 text-red-500" />
+          </div>
+          <p className="text-sm text-red-600">
+            Error al cargar el resumen. Verifica que el servidor está en marcha.
+          </p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="p-8">
+    <div className="page-transition p-4 sm:p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Panel de control</h1>
         <p className="mt-1 text-sm text-gray-500">
@@ -86,36 +86,38 @@ export function DashboardPage() {
 
       {/* Stats */}
       <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        {/* Total */}
-        <div className="col-span-2 sm:col-span-1 rounded-xl bg-primary-600 p-5 text-white shadow-sm">
+        {/* Total - featured card */}
+        <div className="col-span-2 sm:col-span-1 animate-scale-in rounded-xl bg-gradient-to-br from-primary-600 to-primary-700 p-5 text-white shadow-md">
           <p className="text-sm font-medium text-primary-200">Total documentos</p>
-          <p className="mt-1 text-4xl font-bold">{data?.documentsTotal ?? 0}</p>
+          <p className="mt-1 text-4xl font-bold tracking-tight">{data?.documentsTotal ?? 0}</p>
         </div>
 
         {/* By status */}
-        {(['draft', 'in_review', 'approved', 'obsolete'] as const).map((status) => {
-          const cfg = STATUS_CONFIG[status]
-          const Icon = cfg.icon
-          return (
-            <div key={status} className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
-              <div className={`mb-2 inline-flex rounded-lg p-2 ${cfg.color}`}>
-                <Icon className={`h-4 w-4 ${cfg.iconColor}`} />
-              </div>
-              <p className="text-xs text-gray-500">{cfg.label}</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {data?.byStatus[status] ?? 0}
-              </p>
+        {STATUS_ITEMS.map(({ status, icon: Icon, color, iconColor }, i) => (
+          <div
+            key={status}
+            className="card p-5 animate-scale-in"
+            style={{ animationDelay: `${(i + 1) * 60}ms` }}
+          >
+            <div className={`mb-3 inline-flex rounded-lg p-2.5 ${color} ring-1 ring-black/5`}>
+              <Icon className={`h-4 w-4 ${iconColor}`} />
             </div>
-          )
-        })}
+            <p className="text-xs text-gray-500">
+              <StatusBadge status={status} />
+            </p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">
+              {data?.byStatus[status] ?? 0}
+            </p>
+          </div>
+        ))}
       </div>
 
       {/* Recent audit events */}
-      <div className="rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
-        <div className="flex items-center gap-2 border-b border-gray-100 px-6 py-4">
-          <Activity className="h-4 w-4 text-primary-600" />
-          <h2 className="font-semibold text-gray-900">Actividad reciente</h2>
-        </div>
+      <Card className="animate-slide-up">
+        <CardHeader
+          title="Actividad reciente"
+          icon={<Activity className="h-4 w-4 text-primary-600" />}
+        />
         <ul className="divide-y divide-gray-50">
           {data?.recentAuditEvents.length === 0 ? (
             <li className="px-6 py-10 text-center text-sm text-gray-400">
@@ -127,7 +129,7 @@ export function DashboardPage() {
             ))
           )}
         </ul>
-      </div>
+      </Card>
     </div>
   )
 }

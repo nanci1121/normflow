@@ -2,7 +2,15 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../src/generated/prisma/client";
 import { beforeAll, beforeEach, afterAll } from "vitest";
 
-const TABLES = ["AuditEvent", "DocumentApproval", "DocumentVersion", "Document", "User"];
+const TABLES = [
+  "AuditEvent",
+  "ApprovalWorkflowStep",
+  "ApprovalWorkflow",
+  "DocumentApproval",
+  "DocumentVersion",
+  "Document",
+  "User",
+];
 
 let prisma: PrismaClient;
 
@@ -22,7 +30,11 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   for (const table of TABLES) {
-    await prisma.$executeRawUnsafe(`DELETE FROM "${table}"`);
+    try {
+      await prisma.$executeRawUnsafe(`DELETE FROM "${table}"`);
+    } catch {
+      // Ignore tables that are not present yet in this test database.
+    }
   }
 });
 

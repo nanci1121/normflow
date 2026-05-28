@@ -1,6 +1,7 @@
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
@@ -23,6 +24,8 @@ model User {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  approvalWorkflowSteps ApprovalWorkflowStep[]
 }
 
 model Document {
@@ -64,6 +67,8 @@ model DocumentVersion {
 model DocumentApproval {
   id         String    @id @default(uuid())
   approverId String
+  stepOrder  Int?
+  responsibility String?
   status     String    @default("pending")
   comment    String?
   decidedAt  DateTime?
@@ -86,4 +91,30 @@ model AuditEvent {
 
   @@index([entityId])
   @@index([entityType])
+}
+
+model ApprovalWorkflow {
+  id        String   @id @default(uuid())
+  category  String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  steps ApprovalWorkflowStep[]
+}
+
+model ApprovalWorkflowStep {
+  id             String           @id @default(uuid())
+  stepOrder      Int
+  responsibility String
+  createdAt      DateTime         @default(now())
+
+  workflowId String
+  workflow   ApprovalWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  approverId String
+  approver   User   @relation(fields: [approverId], references: [id], onDelete: Restrict)
+
+  @@index([workflowId])
+  @@unique([workflowId, stepOrder])
+  @@unique([workflowId, approverId])
 }

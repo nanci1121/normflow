@@ -178,6 +178,18 @@ tests/
 5. Cada transición inválida debe tener su test que verifique HTTP 422.
 6. Verificar que `AuditEvent` se crea con `action`, `entityId`, `details.from` y `details.to` correctos.
 
+## Regla de tests para nuevo código
+
+> **Ningún código nuevo (backend o frontend) se considera completo sin sus tests.**
+>
+> - Backend: tests de integración en `backend/tests/integration/` y unitarios en `backend/tests/unit/`
+> - Frontend: tests con Vitepor carpeta `frontend/src/__tests__/` (nombrados `*.test.tsx`)
+> - Toda nueva página, componente o hook debe tener al menos un test que cubra:
+>   - **Renderizado** — que el componente se monta sin errores
+>   - **Estados** — carga, error, vacío, con datos
+>   - **Interacciones** — clics, cambios de input, envíos de formulario (cuando aplique)
+> - No se puede mergear código sin tests que pasen.
+
 ### Casos obligatorios
 
 | Caso | Qué verificar |

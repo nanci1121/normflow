@@ -42,13 +42,14 @@ describe("Document Lifecycle", () => {
     await app.ready();
     const { user } = await createTestUser(prisma);
     const { user: approver } = await createTestUser(prisma);
-    const token = generateToken(user);
-    const doc = await createDoc(app, token, user.id);
+    const ownerToken = generateToken(user);
+    const approverToken = generateToken(approver);
+    const doc = await createDoc(app, ownerToken, user.id);
 
     expect(doc.status).toBe("draft");
 
     const submitRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
-      token,
+      token: ownerToken,
       payload: { actorId: user.id, approverIds: [approver.id] },
     });
     expect(submitRes.statusCode).toBe(200);
@@ -57,8 +58,8 @@ describe("Document Lifecycle", () => {
     expect(submitRes.json().approvals[0].status).toBe("pending");
 
     const approveRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
-      token,
-      payload: { actorId: user.id, approverId: approver.id, decision: "approved" },
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "approved" },
     });
     expect(approveRes.statusCode).toBe(200);
     expect(approveRes.json().status).toBe("approved");
@@ -71,17 +72,18 @@ describe("Document Lifecycle", () => {
     await app.ready();
     const { user } = await createTestUser(prisma);
     const { user: approver } = await createTestUser(prisma);
-    const token = generateToken(user);
-    const doc = await createDoc(app, token, user.id);
+    const ownerToken = generateToken(user);
+    const approverToken = generateToken(approver);
+    const doc = await createDoc(app, ownerToken, user.id);
 
     await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
-      token,
+      token: ownerToken,
       payload: { actorId: user.id, approverIds: [approver.id] },
     });
 
     const rejectRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
-      token,
-      payload: { actorId: user.id, approverId: approver.id, decision: "rejected", comment: "Needs revision" },
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "rejected", comment: "Needs revision" },
     });
     expect(rejectRes.statusCode).toBe(200);
     expect(rejectRes.json().status).toBe("draft");
@@ -98,20 +100,21 @@ describe("Document Lifecycle", () => {
     await app.ready();
     const { user } = await createTestUser(prisma);
     const { user: approver } = await createTestUser(prisma);
-    const token = generateToken(user);
-    const doc = await createDoc(app, token, user.id);
+    const ownerToken = generateToken(user);
+    const approverToken = generateToken(approver);
+    const doc = await createDoc(app, ownerToken, user.id);
 
     await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
-      token,
+      token: ownerToken,
       payload: { actorId: user.id, approverIds: [approver.id] },
     });
     await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
-      token,
-      payload: { actorId: user.id, approverId: approver.id, decision: "approved" },
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "approved" },
     });
 
     const obsoleteRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/obsolete`, {
-      token,
+      token: ownerToken,
       payload: { actorId: user.id, reason: "Documento reemplazado por nueva versión" },
     });
 
@@ -127,20 +130,21 @@ describe("Document Lifecycle", () => {
     await app.ready();
     const { user } = await createTestUser(prisma);
     const { user: approver } = await createTestUser(prisma);
-    const token = generateToken(user);
-    const doc = await createDoc(app, token, user.id);
+    const ownerToken = generateToken(user);
+    const approverToken = generateToken(approver);
+    const doc = await createDoc(app, ownerToken, user.id);
 
     await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
-      token,
+      token: ownerToken,
       payload: { actorId: user.id, approverIds: [approver.id] },
     });
     await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
-      token,
-      payload: { actorId: user.id, approverId: approver.id, decision: "approved" },
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "approved" },
     });
 
     const res = await inject(app, "POST", `/api/v1/documents/${doc.id}/obsolete`, {
-      token,
+      token: ownerToken,
       payload: { actorId: user.id, reason: "" },
     });
 
@@ -155,16 +159,16 @@ describe("Document Lifecycle", () => {
     await app.ready();
     const { user } = await createTestUser(prisma);
     const { user: approver } = await createTestUser(prisma);
-    const token = generateToken(user);
-    const doc = await createDoc(app, token, user.id);
+    const ownerToken = generateToken(user);
+    const doc = await createDoc(app, ownerToken, user.id);
 
     await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
-      token,
+      token: ownerToken,
       payload: { actorId: user.id, approverIds: [approver.id] },
     });
 
     const res = await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
-      token,
+      token: ownerToken,
       payload: { actorId: user.id, approverIds: [approver.id] },
     });
 
@@ -183,7 +187,7 @@ describe("Document Lifecycle", () => {
 
     const res = await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
       token,
-      payload: { actorId: user.id, approverId: user.id, decision: "approved" },
+      payload: { approverId: user.id, decision: "approved" },
     });
 
     expect(res.statusCode).toBe(422);
@@ -208,20 +212,191 @@ describe("Document Lifecycle", () => {
     await app.close();
   });
 
-  it("aprobador duplicado → 409", async () => {
+  it("re-submit tras reject funciona con el mismo approver", async () => {
     const app = buildApp();
     await app.ready();
     const { user } = await createTestUser(prisma);
     const { user: approver } = await createTestUser(prisma);
-    const token = generateToken(user);
-    const doc = await createDoc(app, token, user.id);
+    const ownerToken = generateToken(user);
+    const approverToken = generateToken(approver);
+    const doc = await createDoc(app, ownerToken, user.id);
+
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token: ownerToken,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "rejected" },
+    });
+
+    const resubmitRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token: ownerToken,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+
+    expect(resubmitRes.statusCode).toBe(200);
+    expect(resubmitRes.json().status).toBe("in_review");
+    expect(resubmitRes.json().approvals).toHaveLength(1);
+    expect(resubmitRes.json().approvals[0].status).toBe("pending");
+
+    await app.close();
+  });
+
+  it("IDs de aprobador duplicados en el array no rompen (se deduplican)", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const { user: approver } = await createTestUser(prisma);
+    const ownerToken = generateToken(user);
+    const doc = await createDoc(app, ownerToken, user.id);
 
     const res = await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
-      token,
+      token: ownerToken,
       payload: { actorId: user.id, approverIds: [approver.id, approver.id] },
     });
 
-    expect(res.statusCode).toBe(409);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().approvals).toHaveLength(1);
+
+    await app.close();
+  });
+
+  it("crear → submit → approve → obsolete (e2e completo)", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const { user: approver } = await createTestUser(prisma);
+    const ownerToken = generateToken(user);
+    const approverToken = generateToken(approver);
+    const doc = await createDoc(app, ownerToken, user.id);
+
+    expect(doc.status).toBe("draft");
+
+    const submitRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token: ownerToken,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+    expect(submitRes.statusCode).toBe(200);
+    expect(submitRes.json().status).toBe("in_review");
+
+    const approveRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "approved" },
+    });
+    expect(approveRes.statusCode).toBe(200);
+    expect(approveRes.json().status).toBe("approved");
+
+    const obsoleteRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/obsolete`, {
+      token: ownerToken,
+      payload: { actorId: user.id, reason: "Documento reemplazado" },
+    });
+    expect(obsoleteRes.statusCode).toBe(200);
+    expect(obsoleteRes.json().status).toBe("obsolete");
+    expect(obsoleteRes.json().obsoleteReason).toBe("Documento reemplazado");
+
+    await app.close();
+  });
+
+  it("crear → submit → reject → re-submit → approve → obsolete (e2e recuperación)", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const { user: approver } = await createTestUser(prisma);
+    const ownerToken = generateToken(user);
+    const approverToken = generateToken(approver);
+    const doc = await createDoc(app, ownerToken, user.id);
+
+    expect(doc.status).toBe("draft");
+
+    const submitRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token: ownerToken,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+    expect(submitRes.statusCode).toBe(200);
+    expect(submitRes.json().status).toBe("in_review");
+
+    const rejectRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "rejected", comment: "Needs changes" },
+    });
+    expect(rejectRes.statusCode).toBe(200);
+    expect(rejectRes.json().status).toBe("draft");
+    expect(rejectRes.json().approvals[0].status).toBe("rejected");
+
+    const resubmitRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token: ownerToken,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+    expect(resubmitRes.statusCode).toBe(200);
+    expect(resubmitRes.json().status).toBe("in_review");
+
+    const approveRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "approved" },
+    });
+    expect(approveRes.statusCode).toBe(200);
+    expect(approveRes.json().status).toBe("approved");
+
+    const obsoleteRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/obsolete`, {
+      token: ownerToken,
+      payload: { actorId: user.id, reason: "Ciclo completado" },
+    });
+    expect(obsoleteRes.statusCode).toBe(200);
+    expect(obsoleteRes.json().status).toBe("obsolete");
+
+    await app.close();
+  });
+
+  it("usuario no aprobador recibe 403 al intentar aprobar", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const { user: approver } = await createTestUser(prisma);
+    const { user: otherUser } = await createTestUser(prisma);
+    const ownerToken = generateToken(user);
+    const otherToken = generateToken(otherUser);
+    const doc = await createDoc(app, ownerToken, user.id);
+
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token: ownerToken,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+
+    const res = await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
+      token: otherToken,
+      payload: { approverId: approver.id, decision: "approved" },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().message).toContain("No autorizado");
+
+    await app.close();
+  });
+
+  it("admin puede aprobar en nombre de cualquier aprobador", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const { user: approver } = await createTestUser(prisma);
+    const { user: admin } = await createTestUser(prisma, { role: "admin" });
+    const ownerToken = generateToken(user);
+    const adminToken = generateToken(admin);
+    const doc = await createDoc(app, ownerToken, user.id);
+
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token: ownerToken,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+
+    const res = await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
+      token: adminToken,
+      payload: { approverId: approver.id, decision: "approved" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("approved");
 
     await app.close();
   });

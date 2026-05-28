@@ -9,7 +9,8 @@ async function inject(
   url: string,
   opts?: { token?: string; payload?: unknown }
 ) {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  const headers: Record<string, string> = {};
+  if (opts?.payload !== undefined) headers["content-type"] = "application/json";
   if (opts?.token) headers["authorization"] = `Bearer ${opts.token}`;
 
   return app.inject({
@@ -158,7 +159,7 @@ describe("Documents API", () => {
     await app.close();
   });
 
-  it("documento restricted no aparece en listado ni detalle", async () => {
+  it("dueño ve documento restricted en listado y detalle", async () => {
     const app = buildApp();
     await app.ready();
     const { user } = await createTestUser(prisma);
@@ -180,17 +181,98 @@ describe("Documents API", () => {
     });
 
     expect(createRes.statusCode).toBe(201);
+    const docId = createRes.json().id;
 
     const listRes = await inject(app, "GET", "/api/v1/documents", { token });
 
     const found = listRes.json().items.find(
       (d: { code: string }) => d.code === "RESTRICTED-001"
     );
+    expect(found).toBeDefined();
+
+    const detailRes = await inject(app, "GET", `/api/v1/documents/${docId}`, { token });
+
+    expect(detailRes.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it("otro usuario no ve documento restricted en listado ni detalle", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user: owner } = await createTestUser(prisma);
+    const { user: other } = await createTestUser(prisma);
+    const ownerToken = generateToken(owner);
+    const otherToken = generateToken(other);
+
+    const createRes = await inject(app, "POST", "/api/v1/documents", {
+      token: ownerToken,
+      payload: {
+        code: "RESTRICTED-002",
+        title: "Secret Doc",
+        description: "desc",
+        category: "quality",
+        standardTags: [],
+        ownerId: owner.id,
+        visibility: "restricted",
+        content: "secret content",
+        createdBy: owner.id,
+      },
+    });
+
+    expect(createRes.statusCode).toBe(201);
+    const docId = createRes.json().id;
+
+    const listRes = await inject(app, "GET", "/api/v1/documents", { token: otherToken });
+
+    const found = listRes.json().items.find(
+      (d: { code: string }) => d.code === "RESTRICTED-002"
+    );
     expect(found).toBeUndefined();
 
-    const detailRes = await inject(app, "GET", `/api/v1/documents/${createRes.json().id}`, { token });
+    const detailRes = await inject(app, "GET", `/api/v1/documents/${docId}`, { token: otherToken });
 
     expect(detailRes.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("admin ve documento restricted de otro usuario", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user: owner } = await createTestUser(prisma);
+    const { user: admin } = await createTestUser(prisma, { role: "admin" });
+    const ownerToken = generateToken(owner);
+    const adminToken = generateToken(admin);
+
+    const createRes = await inject(app, "POST", "/api/v1/documents", {
+      token: ownerToken,
+      payload: {
+        code: "RESTRICTED-003",
+        title: "Admin Visible Doc",
+        description: "desc",
+        category: "quality",
+        standardTags: [],
+        ownerId: owner.id,
+        visibility: "restricted",
+        content: "admin can see",
+        createdBy: owner.id,
+      },
+    });
+
+    expect(createRes.statusCode).toBe(201);
+    const docId = createRes.json().id;
+
+    const listRes = await inject(app, "GET", "/api/v1/documents", { token: adminToken });
+
+    const found = listRes.json().items.find(
+      (d: { code: string }) => d.code === "RESTRICTED-003"
+    );
+    expect(found).toBeDefined();
+
+    const detailRes = await inject(app, "GET", `/api/v1/documents/${docId}`, { token: adminToken });
+
+    expect(detailRes.statusCode).toBe(200);
 
     await app.close();
   });
@@ -231,6 +313,95 @@ describe("Documents API", () => {
     expect(res.json().versions[0].number).toBe(2);
     expect(res.json().versions[0].changeSummary).toBe("Updated content");
     expect(res.json().status).toBe("draft");
+
+    await app.close();
+  });
+
+  it("GET /api/v1/users → 200 con lista de usuarios (solo admin)", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user: admin } = await createTestUser(prisma, { role: "admin" });
+    const token = generateToken(admin);
+
+    const res = await inject(app, "GET", "/api/v1/users", { token });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.items).toBeDefined();
+    expect(body.items.length).toBeGreaterThanOrEqual(1);
+    expect(body.items[0].isActive).toBe(true);
+
+    await app.close();
+  });
+
+  it("POST /api/v1/users → 201 crea usuario con isActive", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user: admin } = await createTestUser(prisma, { role: "admin" });
+    const token = generateToken(admin);
+
+    const res = await inject(app, "POST", "/api/v1/users", {
+      token,
+      payload: {
+        email: "nuevo@test.com",
+        name: "Nuevo Usuario",
+        password: "pass1234",
+        role: "reader",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.email).toBe("nuevo@test.com");
+    expect(body.isActive).toBe(true);
+
+    await app.close();
+  });
+
+  it("PATCH /api/v1/users/:id/toggle-active → cambia isActive", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user: admin } = await createTestUser(prisma, { role: "admin" });
+    const { user: target } = await createTestUser(prisma, { role: "reader" });
+    const token = generateToken(admin);
+
+    const res = await inject(app, "PATCH", `/api/v1/users/${target.id}/toggle-active`, { token });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().isActive).toBe(false);
+
+    const res2 = await inject(app, "PATCH", `/api/v1/users/${target.id}/toggle-active`, { token });
+    expect(res2.statusCode).toBe(200);
+    expect(res2.json().isActive).toBe(true);
+
+    await app.close();
+  });
+
+  it("PATCH /api/v1/users/:id/toggle-active → 404 si usuario no existe", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user: admin } = await createTestUser(prisma, { role: "admin" });
+    const token = generateToken(admin);
+
+    const res = await inject(app, "PATCH", "/api/v1/users/00000000-0000-0000-0000-000000000000/toggle-active", { token });
+    expect(res.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("POST /api/v1/users → 403 si no es admin", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user: reader } = await createTestUser(prisma, { role: "reader" });
+    const token = generateToken(reader);
+
+    const res = await inject(app, "POST", "/api/v1/users", {
+      token,
+      payload: {
+        email: "otro@test.com",
+        name: "Otro",
+        password: "pass1234",
+        role: "admin",
+      },
+    });
+    expect(res.statusCode).toBe(403);
 
     await app.close();
   });

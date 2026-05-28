@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $composeCommands = @(
-  @('podman', 'compose', 'up', '-d'),
-  @('docker', 'compose', 'up', '-d')
+  @('podman', 'compose', 'up', '-d', '--build'),
+  @('docker', 'compose', 'up', '-d', '--build')
 )
 
 foreach ($command in $composeCommands) {

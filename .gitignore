@@ -10,3 +10,4 @@ dist
 
 backend/src/generated/prisma
 .venv
+.docker-data/

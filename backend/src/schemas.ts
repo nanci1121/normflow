@@ -23,3 +23,26 @@ export const createUserSchema = {
     additionalProperties: false,
   },
 } as const;
+
+export const setApprovalWorkflowSchema = {
+  body: {
+    type: "object",
+    required: ["steps"],
+    properties: {
+      steps: {
+        type: "array",
+        minItems: 1,
+        items: {
+          type: "object",
+          required: ["approverId", "responsibility"],
+          properties: {
+            approverId: { type: "string", minLength: 1 },
+            responsibility: { type: "string", minLength: 2 },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    additionalProperties: false,
+  },
+} as const;

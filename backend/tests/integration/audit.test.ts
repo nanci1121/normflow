@@ -91,6 +91,7 @@ describe("Audit Trail", () => {
     const { user } = await createTestUser(prisma);
     const { user: approver } = await createTestUser(prisma);
     const token = generateToken(user);
+    const approverToken = generateToken(approver);
     const doc = await createDoc(app, token, user.id);
 
     await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
@@ -98,8 +99,8 @@ describe("Audit Trail", () => {
       payload: { actorId: user.id, approverIds: [approver.id] },
     });
     await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
-      token,
-      payload: { actorId: user.id, approverId: approver.id, decision: "approved" },
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "approved" },
     });
 
     const auditRes = await inject(app, "GET", `/api/v1/documents/${doc.id}/audit`, { token });
@@ -120,6 +121,7 @@ describe("Audit Trail", () => {
     const { user } = await createTestUser(prisma);
     const { user: approver } = await createTestUser(prisma);
     const token = generateToken(user);
+    const approverToken = generateToken(approver);
     const doc = await createDoc(app, token, user.id);
 
     await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
@@ -127,8 +129,8 @@ describe("Audit Trail", () => {
       payload: { actorId: user.id, approverIds: [approver.id] },
     });
     await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
-      token,
-      payload: { actorId: user.id, approverId: approver.id, decision: "rejected" },
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "rejected" },
     });
 
     const auditRes = await inject(app, "GET", `/api/v1/documents/${doc.id}/audit`, { token });
