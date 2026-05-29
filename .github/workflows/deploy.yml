@@ -75,8 +75,22 @@ jobs:
           script: |
             set -e
             cd /opt/qms
+
+            cat > .env <<EOF
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            GITHUB_REPOSITORY=${{ github.repository }}
+            BACKEND_IMAGE_TAG=${{ github.sha }}
+            FRONTEND_IMAGE_TAG=${{ github.sha }}
+            PGADMIN_IMAGE_TAG=latest
+            EOF
+
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             docker compose pull
             docker compose up -d --remove-orphans
+
+            # Run database migrations
+            docker compose exec -T backend npx prisma migrate deploy
+
             docker image prune -f

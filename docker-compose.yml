@@ -20,7 +20,7 @@ services:
       retries: 5
 
   pgadmin:
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:${PGADMIN_IMAGE_TAG:-latest}
     container_name: qms-pgadmin
     restart: unless-stopped
     ports:
@@ -40,6 +40,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: ghcr.io/${GITHUB_REPOSITORY:-qms-platform}/backend:${BACKEND_IMAGE_TAG:-latest}
     container_name: qms-backend
     restart: unless-stopped
     ports:
@@ -48,18 +49,25 @@ services:
       NODE_ENV: production
       PORT: "3000"
       HOST: "0.0.0.0"
-      DATABASE_URL: postgresql://qms:qms_secret@postgres:5432/qms_platform
-      JWT_SECRET: change_me_in_production
+      DATABASE_URL: postgresql://qms:${POSTGRES_PASSWORD:-qms_secret}@postgres:5432/qms_platform
+      JWT_SECRET: ${JWT_SECRET}
     networks:
       - qms-network
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/health').then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    image: ghcr.io/${GITHUB_REPOSITORY:-qms-platform}/frontend:${FRONTEND_IMAGE_TAG:-latest}
     container_name: qms-frontend
     restart: unless-stopped
     ports:
@@ -67,7 +75,14 @@ services:
     networks:
       - qms-network
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 networks:
   qms-network:
