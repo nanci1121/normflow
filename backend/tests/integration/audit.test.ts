@@ -145,6 +145,118 @@ describe("Audit Trail", () => {
     await app.close();
   });
 
+  it("filtrar auditoría por action devuelve solo eventos de ese tipo", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const { user: approver } = await createTestUser(prisma);
+    const token = generateToken(user);
+    const approverToken = generateToken(approver);
+    const doc = await createDoc(app, token, user.id);
+
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "approved" },
+    });
+
+    const filterRes = await inject(
+      app,
+      "GET",
+      `/api/v1/documents/${doc.id}/audit?action=document.submitted`,
+      { token }
+    );
+    expect(filterRes.statusCode).toBe(200);
+    const items = filterRes.json().items;
+    expect(items.every((e: { action: string }) => e.action === "document.submitted")).toBe(true);
+
+    await app.close();
+  });
+
+  it("filtrar auditoría por actorId devuelve solo eventos de ese actor", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const { user: approver } = await createTestUser(prisma);
+    const token = generateToken(user);
+    const approverToken = generateToken(approver);
+    const doc = await createDoc(app, token, user.id);
+
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "approved" },
+    });
+
+    const filterRes = await inject(
+      app,
+      "GET",
+      `/api/v1/documents/${doc.id}/audit?actorId=${approver.id}`,
+      { token }
+    );
+    expect(filterRes.statusCode).toBe(200);
+    const items = filterRes.json().items;
+    expect(items.length).toBeGreaterThanOrEqual(1);
+    expect(items.every((e: { actorId: string }) => e.actorId === approver.id)).toBe(true);
+
+    await app.close();
+  });
+
+  it("filtrar auditoría por rango de fechas (from/to)", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const token = generateToken(user);
+    const doc = await createDoc(app, token, user.id);
+
+    const filterRes = await inject(
+      app,
+      "GET",
+      `/api/v1/documents/${doc.id}/audit?from=2020-01-01T00:00:00Z&to=2020-12-31T23:59:59Z`,
+      { token }
+    );
+    expect(filterRes.statusCode).toBe(200);
+    expect(filterRes.json().items).toHaveLength(0);
+
+    const allRes = await inject(
+      app,
+      "GET",
+      `/api/v1/documents/${doc.id}/audit?from=2020-01-01T00:00:00Z&to=2030-12-31T23:59:59Z`,
+      { token }
+    );
+    expect(allRes.statusCode).toBe(200);
+    expect(allRes.json().items.length).toBeGreaterThanOrEqual(1);
+
+    await app.close();
+  });
+
+  it("export con filtro action funciona correctamente", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const token = generateToken(user);
+    const doc = await createDoc(app, token, user.id);
+
+    const res = await inject(
+      app,
+      "GET",
+      `/api/v1/documents/${doc.id}/audit/export?format=csv&action=document.created`,
+      { token }
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/csv");
+    const lines = res.body.trim().split("\n");
+    expect(lines.length).toBe(2); // header + 1 event
+
+    await app.close();
+  });
+
   it("solo se crean AuditEvent, nunca se hace update/delete desde la app", async () => {
     const app = buildApp();
     await app.ready();

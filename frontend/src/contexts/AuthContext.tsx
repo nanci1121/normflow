@@ -13,8 +13,10 @@ interface AuthContextValue {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
-  login: (credentials: LoginCredentials) => Promise<void>
+  mustChangePassword: boolean
+  login: (credentials: LoginCredentials) => Promise<boolean>
   logout: () => Promise<void>
+  clearMustChangePassword: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -22,6 +24,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [mustChangePassword, setMustChangePassword] = useState(false)
 
   // Rehydrate session from stored token on mount
   useEffect(() => {
@@ -31,16 +34,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
     getMe()
-      .then(setUser)
+      .then((me) => {
+        setUser(me)
+        setMustChangePassword(me.mustChangePassword)
+      })
       .catch(() => localStorage.removeItem('access_token'))
       .finally(() => setIsLoading(false))
   }, [])
 
   const login = useCallback(async (credentials: LoginCredentials) => {
-    const { accessToken } = await apiLogin(credentials)
+    const { accessToken, mustChangePassword: mustChange } = await apiLogin(credentials)
     localStorage.setItem('access_token', accessToken)
     const me = await getMe()
     setUser(me)
+    setMustChangePassword(mustChange)
+    return mustChange
   }, [])
 
   const logout = useCallback(async () => {
@@ -51,11 +59,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     localStorage.removeItem('access_token')
     setUser(null)
+    setMustChangePassword(false)
+  }, [])
+
+  const clearMustChangePassword = useCallback(() => {
+    setMustChangePassword(false)
   }, [])
 
   const value = useMemo(
-    () => ({ user, isLoading, isAuthenticated: user !== null, login, logout }),
-    [user, isLoading, login, logout],
+    () => ({ user, isLoading, isAuthenticated: user !== null, mustChangePassword, login, logout, clearMustChangePassword }),
+    [user, isLoading, login, logout, mustChangePassword, clearMustChangePassword],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

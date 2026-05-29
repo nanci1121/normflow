@@ -53,7 +53,7 @@ npm run dev
 
 ## Scripts raiz
 
-- `npm run up`: levanta stack con Podman Compose o Docker Compose
+- `npm run up`: levanta stack con Docker Compose o Podman Compose
 - `npm run down`: baja stack de contenedores
 - `npm run dev`: levanta backend + frontend en local con recarga
 - `npm run stop:dev`: libera puertos de desarrollo
@@ -163,11 +163,11 @@ docker run --rm -v pgdata:/data -v /backups:/backup alpine \
 
 ## Despliegue en Debian 12
 
-Para un servidor Debian 12, la ruta mas estable es usar Docker Engine o Podman con el stack de contenedores:
+Para un servidor Debian 12, la ruta mas estable es usar Docker Engine o Docker Desktop con el stack de contenedores:
 
 1. Copiar [.env.example](.env.example) a `.env` y ajustar secretos e imagenes.
 2. Publicar backend y frontend con tags inmutables, idealmente el `github.sha` del despliegue.
 3. Ejecutar `docker compose pull` y `docker compose up -d --remove-orphans` en el servidor.
 4. Aplicar migraciones con `docker compose exec -T backend npx prisma migrate deploy`.
 
-Si el servidor no tiene Docker Desktop, Podman funciona bien en Debian 12 como alternativa compatible para el mismo `docker compose.yml`.
+Si el servidor no tiene Docker Desktop, Podman sigue siendo una alternativa compatible para el mismo `docker compose.yml`.

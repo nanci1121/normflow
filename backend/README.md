@@ -115,6 +115,9 @@ Body de `PUT`:
 - `POST /api/v1/documents/:id/obsolete`
 - `GET /api/v1/documents/:id/audit`
 - `GET /api/v1/documents/:id/audit/export?format=csv|pdf`
+- `POST /api/v1/documents/:id/access` — conceder acceso a documento `restricted` (propietario)
+- `DELETE /api/v1/documents/:id/access/:userId` — revocar acceso (propietario)
+- `GET /api/v1/documents/:id/access` — listar accesos concedidos (propietario)
 
 Notas:
 
@@ -164,12 +167,24 @@ npm start
 npm test
 ```
 
+Estructura de suites:
+
+| Suite | Directorio | Proposito |
+|-------|-----------|-----------|
+| Unitarios | `tests/unit/` | Modulos aislados (ej. plantillas email) |
+| Integracion | `tests/integration/` | Endpoints individuales contra BD real (documentos, lifecycle, workflows, ACL, auditoria, export) |
+| Funcionales (E2E) | `tests/functional/` | Escenarios completos de principio a fin (lifecycle, approval workflow, ACL, auditoria) |
+
 Suites destacadas:
 
 - [tests/integration/lifecycle.test.ts](tests/integration/lifecycle.test.ts)
 - [tests/integration/approval-workflows.test.ts](tests/integration/approval-workflows.test.ts)
 - [tests/integration/audit.test.ts](tests/integration/audit.test.ts)
 - [tests/integration/export.test.ts](tests/integration/export.test.ts)
+- [tests/functional/lifecycle-scenarios.test.ts](tests/functional/lifecycle-scenarios.test.ts)
+- [tests/functional/approval-workflow-scenarios.test.ts](tests/functional/approval-workflow-scenarios.test.ts)
+- [tests/functional/acl-scenarios.test.ts](tests/functional/acl-scenarios.test.ts)
+- [tests/functional/audit-scenarios.test.ts](tests/functional/audit-scenarios.test.ts)
 
 ## Seed inicial
 

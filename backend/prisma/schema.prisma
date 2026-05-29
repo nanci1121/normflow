@@ -21,11 +21,13 @@ model User {
   name         String
   role         UserRole @default(reader)
   passwordHash String
-  isActive     Boolean  @default(true)
+  isActive            Boolean  @default(true)
+  mustChangePassword  Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   approvalWorkflowSteps ApprovalWorkflowStep[]
+  documentGrants        DocumentAccess[]
 }
 
 model Document {
@@ -47,6 +49,22 @@ model Document {
   versions  DocumentVersion[]
   approvals DocumentApproval[]
   signatures String[]
+  grants DocumentAccess[]
+}
+
+model DocumentAccess {
+  id        String   @id @default(uuid())
+  userId    String
+  grantedBy String
+  createdAt DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, userId])
+  @@index([documentId])
+  @@index([userId])
 }
 
 model DocumentVersion {

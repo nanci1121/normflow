@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TableSkeleton } from '@/components/ui/LoadingSkeleton'
-import type { DocumentApproval, DocumentStatus } from '@/types'
+import type { ApprovalProgress as ApprovalProgressType, DocumentApproval, DocumentStatus } from '@/types'
 
 function timeAgo(isoDate: string): string {
   const diff = Math.floor((Date.now() - new Date(isoDate).getTime()) / 1000)
@@ -17,11 +17,20 @@ function timeAgo(isoDate: string): string {
   return `hace ${Math.floor(diff / 86400)} d`
 }
 
-function ApprovalProgress({ status, approvals }: { status: DocumentStatus; approvals: DocumentApproval[] }) {
-  if (approvals.length === 0 || status === 'draft') return <span className="text-gray-300">—</span>
-  if (status === 'obsolete') return <span className="text-gray-300">—</span>
+function ApprovalProgress({
+  status,
+  progress,
+  approvals,
+}: {
+  status: DocumentStatus
+  progress: ApprovalProgressType
+  approvals: DocumentApproval[]
+}) {
+  if (status === 'draft' || progress.totalSteps === 0) {
+    return <span className="text-xs text-gray-400">Sin flujo</span>
+  }
 
-  if (status === 'approved') {
+  if (status === 'obsolete') {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-green-600">
         <CheckCircle className="h-3.5 w-3.5" />
@@ -30,10 +39,18 @@ function ApprovalProgress({ status, approvals }: { status: DocumentStatus; appro
     )
   }
 
-  const approvedCount = approvals.filter((a) => a.status === 'approved').length
+  if (progress.approvedSteps === progress.totalSteps) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-green-600">
+        <CheckCircle className="h-3.5 w-3.5" />
+        Completo
+      </span>
+    )
+  }
+
   const stepInfo = approvals[0]?.stepOrder != null
-    ? `Paso ${approvedCount + 1}/${approvals.length}`
-    : `${approvedCount}/${approvals.length}`
+    ? `Paso ${progress.approvedSteps + 1}/${progress.totalSteps}`
+    : `${progress.approvedSteps}/${progress.totalSteps}`
 
   return (
     <div className="flex flex-col gap-1">
@@ -169,7 +186,7 @@ export function DocumentsListPage() {
                   <th className="px-6 py-3 font-semibold text-gray-500">Título</th>
                   <th className="px-6 py-3 font-semibold text-gray-500">Categoría</th>
                   <th className="px-6 py-3 font-semibold text-gray-500">Estado</th>
-                  <th className="px-6 py-3 font-semibold text-gray-500">Aprobaciones</th>
+                  <th className="px-6 py-3 font-semibold text-gray-500">Flujo</th>
                   <th className="px-6 py-3 font-semibold text-gray-500">Actualizado</th>
                   <th className="px-6 py-3" />
                 </tr>
@@ -197,7 +214,7 @@ export function DocumentsListPage() {
                       <StatusBadge status={doc.status as DocumentStatus} />
                     </td>
                     <td className="px-6 py-4">
-                      <ApprovalProgress status={doc.status as DocumentStatus} approvals={doc.approvals} />
+                      <ApprovalProgress status={doc.status as DocumentStatus} progress={doc.approvalProgress} approvals={doc.approvals} />
                     </td>
                     <td className="px-6 py-4 text-xs text-gray-400">{timeAgo(doc.updatedAt)}</td>
                     <td className="px-6 py-4 text-right">

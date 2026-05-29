@@ -10,6 +10,7 @@ export const mockUser: User = {
   name: 'Admin User',
   role: 'admin',
   isActive: true,
+  mustChangePassword: false,
 }
 
 export function createTestQueryClient() {

@@ -98,6 +98,11 @@ Reglas de aprobacion:
 
 - Documentos `internal`: visibles segun filtros normales.
 - Documentos `restricted`: acceso limitado por contexto de usuario y reglas backend.
+  - Solo el propietario (`ownerId`) y `admin` ven el documento por defecto.
+  - El propietario puede conceder acceso a otros usuarios mediante grants (`DocumentAccess`).
+  - Los usuarios con grant ven el documento en listado y detalle como si fuera propio.
+  - Un usuario con grant no puede conceder acceso a terceros.
+  - Los grants se listan por endpoint específico (solo el propietario).
 
 ### 3.7 Auditoria y exportacion
 
@@ -157,6 +162,9 @@ Base path: `/api/v1`
 - `POST /documents/:id/obsolete`
 - `GET /documents/:id/audit`
 - `GET /documents/:id/audit/export?format=csv|pdf`
+- `POST /documents/:id/access` — conceder acceso a documento `restricted` (propietario)
+- `DELETE /documents/:id/access/:userId` — revocar acceso (propietario)
+- `GET /documents/:id/access` — listar accesos concedidos (propietario)
 
 ## 5. Frontend (pantallas)
 
@@ -188,6 +196,7 @@ Entidades principales en Prisma:
 - `Document`
 - `DocumentVersion`
 - `DocumentApproval`
+- `DocumentAccess` — grants de acceso a documentos `restricted`
 - `ApprovalWorkflow`
 - `ApprovalWorkflowStep`
 - `AuditEvent`
@@ -195,6 +204,7 @@ Entidades principales en Prisma:
 Relaciones clave:
 
 - Un documento tiene muchas versiones y aprobaciones.
+- Un documento `restricted` puede tener muchos `DocumentAccess` (grants).
 - Un workflow tiene muchos pasos.
 - Cada paso de workflow apunta a un usuario aprobador.
 
@@ -239,8 +249,23 @@ npm run build
 
 ### Backend
 
-- Integracion de documentos, lifecycle, workflows, auditoria y export.
-- Unitarios para modulos internos (ejemplo: email).
+Estructura de tests:
+
+| Suite | Directorio | Proposito |
+|-------|-----------|-----------|
+| Unitarios | `tests/unit/` | Modulos aislados (ej. plantillas email) |
+| Integracion | `tests/integration/` | Endpoints individuales contra BD real |
+| Funcionales (E2E) | `tests/functional/` | Escenarios completos de principio a fin |
+
+**Tests de integracion**: documentos, lifecycle, workflows, ACL, auditoria y export.
+
+**Tests funcionales** cubren journeys completos de usuario:
+
+1. Ciclo de vida completo (crear → submit → approve → obsolete).
+2. Flujo con rechazo y recuperacion (crear → submit → reject → re-submit → approve).
+3. Approval workflow por categoria con aprobacion secuencial.
+4. ACL completa (grant → consulta → revoke).
+5. Auditoria integral con verificación de eventos y export CSV/PDF.
 
 ```bash
 npm --prefix backend test
@@ -291,16 +316,13 @@ Backend:
 Implementado y operativo:
 
 1. Login JWT.
-2. Gestion de usuarios admin.
-3. Documentos, versiones y ciclo de vida.
-4. Workflows por categoria.
-5. Aprobacion secuencial con seguridad por aprobador.
-6. Auditoria y exportacion CSV/PDF.
-7. Frontend admin para workflows.
-
-Pendiente segun backlog:
-
-1. Ajustes adicionales de CI/CD por entorno.
-2. Documentacion operativa extra por entorno.
-3. ACL mas fina para documentos `restricted`.
-4. Mejoras adicionales de notificaciones y export avanzado.
+2. Gestion de usuarios admin (crear, listar, activar/desactivar).
+3. Documentos, versiones y ciclo de vida completo.
+4. Workflows de aprobacion configurables por categoria.
+5. Aprobacion secuencial con seguridad por aprobador (solo el asignado decide; admin puede suplir).
+6. ACL granular para documentos `restricted` (grants por usuario, revocacion, solo owner gestiona).
+7. Auditoria completa de eventos con filtros (action, actorId, fechas) y exportacion CSV/PDF.
+8. Notificaciones por email en eventos clave (submit, approve, reject).
+9. Frontend admin para configuracion de workflows.
+10. Tests automatizados: unitarios, integracion y funcionales (E2E).
+11. CI/CD con GitHub Actions (tests en PR, build+push+deploy).

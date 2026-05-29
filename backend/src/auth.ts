@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "./db";
 import { Prisma } from "./generated/prisma/client";
-import { CreateUserInput, HttpError, LoginInput, PublicUser, UserRole } from "./types";
+import { ChangePasswordInput, CreateUserInput, HttpError, LoginInput, PublicUser, ResetPasswordInput, UserRole } from "./types";
 
 const JWT_EXPIRES_IN = "8h";
 
@@ -27,6 +27,7 @@ function toPublicUser(user: {
   name: string;
   role: UserRole;
   isActive: boolean;
+  mustChangePassword: boolean;
 }): PublicUser {
   return {
     id: user.id,
@@ -34,11 +35,12 @@ function toPublicUser(user: {
     name: user.name,
     role: user.role,
     isActive: user.isActive,
+    mustChangePassword: user.mustChangePassword,
   };
 }
 
 export class AuthService {
-  async login(input: LoginInput): Promise<{ accessToken: string }> {
+  async login(input: LoginInput): Promise<{ accessToken: string; mustChangePassword: boolean }> {
     const email = input.email.trim().toLowerCase();
     const user = await prisma.user.findUnique({ where: { email } });
 
@@ -62,7 +64,7 @@ export class AuthService {
       expiresIn: JWT_EXPIRES_IN,
     });
 
-    return { accessToken };
+    return { accessToken, mustChangePassword: user.mustChangePassword };
   }
 
   async getMe(userId: string): Promise<PublicUser> {
@@ -77,6 +79,7 @@ export class AuthService {
       name: user.name,
       role: user.role as UserRole,
       isActive: user.isActive,
+      mustChangePassword: user.mustChangePassword,
     });
   }
 
@@ -104,6 +107,7 @@ export class AuthService {
         name: created.name,
         role: created.role as UserRole,
         isActive: created.isActive,
+        mustChangePassword: created.mustChangePassword,
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -134,7 +138,56 @@ export class AuthService {
       name: updated.name,
       role: updated.role as UserRole,
       isActive: updated.isActive,
+      mustChangePassword: updated.mustChangePassword,
     });
+  }
+
+  async resetPassword(
+    currentUserRole: UserRole,
+    targetUserId: string,
+    input: ResetPasswordInput
+  ): Promise<{ message: string; temporaryPassword: string }> {
+    if (currentUserRole !== "admin") {
+      throw new HttpError(403, "No autorizado");
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!user) {
+      throw new HttpError(404, "Usuario no encontrado");
+    }
+
+    const passwordHash = await bcrypt.hash(input.newPassword, 12);
+
+    await prisma.user.update({
+      where: { id: targetUserId },
+      data: { passwordHash, mustChangePassword: true },
+    });
+
+    return { message: "Contraseña restablecida correctamente", temporaryPassword: input.newPassword };
+  }
+
+  async changePassword(
+    userId: string,
+    input: ChangePasswordInput
+  ): Promise<{ message: string }> {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new HttpError(404, "Usuario no encontrado");
+    }
+
+    const isValid = await bcrypt.compare(input.currentPassword, user.passwordHash);
+    if (!isValid) {
+      throw new HttpError(400, "La contraseña actual no es correcta");
+    }
+
+    const passwordHash = await bcrypt.hash(input.newPassword, 12);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash, mustChangePassword: false },
+    });
+
+    return { message: "Contraseña cambiada correctamente" };
   }
 
   verifyToken(authorizationHeader?: string): TokenPayload {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Users, Plus, Eye, EyeOff, Power, PowerOff } from 'lucide-react'
-import { createUser, listUsers, toggleUserActive } from '@/api/users'
+import { Users, Plus, Eye, EyeOff, Power, PowerOff, KeyRound, X } from 'lucide-react'
+import { createUser, listUsers, toggleUserActive, resetPassword } from '@/api/users'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -17,6 +17,109 @@ const ROLE_LABELS: Record<UserRole, string> = {
   reader: 'Lector',
 }
 
+function ResetPasswordModal({
+  user,
+  onClose,
+}: {
+  user: User
+  onClose: () => void
+}) {
+  const [newPassword, setNewPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [result, setResult] = useState<{ message: string; temporaryPassword: string } | null>(null)
+  const queryClient = useQueryClient()
+
+  const mutation = useMutation({
+    mutationFn: () => resetPassword(user.id, { newPassword }),
+    onSuccess: (data) => {
+      setResult(data)
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+  })
+
+  if (result) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+        <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900">Contraseña restablecida</h3>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+            {result.message}
+          </div>
+          <div className="mt-4">
+            <p className="text-sm text-gray-600">Contraseña temporal:</p>
+            <p className="mt-1 font-mono text-lg font-bold text-gray-900">{result.temporaryPassword}</p>
+          </div>
+          <p className="mt-3 text-xs text-amber-600">
+            El usuario deberá cambiar esta contraseña al iniciar sesión.
+          </p>
+          <Button onClick={onClose} className="mt-4 w-full">
+            Cerrar
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Resetear contraseña de <span className="text-primary-600">{user.name}</span>
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {mutation.isError && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-200 text-xs font-bold text-red-700">!</span>
+            {(mutation.error as Error).message}
+          </div>
+        )}
+
+        <div className="relative">
+          <Input
+            label="Nueva contraseña"
+            type={showPassword ? 'text' : 'password'}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Mínimo 8 caracteres"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            className="absolute right-3 top-[34px] text-gray-400 transition-colors hover:text-gray-600"
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+
+        <div className="mt-4 flex gap-3">
+          <Button variant="ghost" onClick={onClose} className="flex-1">
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            isLoading={mutation.isPending}
+            disabled={newPassword.length < 8}
+            className="flex-1"
+          >
+            <KeyRound className="h-4 w-4" />
+            Resetear
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function UsersPage() {
   const queryClient = useQueryClient()
   const { user: currentUser } = useAuth()
@@ -26,6 +129,7 @@ export function UsersPage() {
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<UserRole>('reader')
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [resetTarget, setResetTarget] = useState<User | null>(null)
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['users'],
@@ -206,19 +310,29 @@ export function UsersPage() {
                       {ROLE_LABELS[u.role as UserRole] ?? u.role}
                     </span>
                     {u.id !== currentUser?.id && (
-                      <button
-                        onClick={() => toggleMutation.mutate(u.id)}
-                        disabled={toggleMutation.isPending}
-                        title={u.isActive ? 'Desactivar usuario' : 'Activar usuario'}
-                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                          u.isActive
-                            ? 'bg-green-50 text-green-700 hover:bg-green-100'
-                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                        }`}
-                      >
-                        {u.isActive ? <Power className="h-3.5 w-3.5" /> : <PowerOff className="h-3.5 w-3.5" />}
-                        {u.isActive ? 'Activo' : 'Inactivo'}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setResetTarget(u)}
+                          title="Resetear contraseña"
+                          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-amber-700 transition-all hover:bg-amber-50"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" />
+                          Reset password
+                        </button>
+                        <button
+                          onClick={() => toggleMutation.mutate(u.id)}
+                          disabled={toggleMutation.isPending}
+                          title={u.isActive ? 'Desactivar usuario' : 'Activar usuario'}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                            u.isActive
+                              ? 'bg-green-50 text-green-700 hover:bg-green-100'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                        >
+                          {u.isActive ? <Power className="h-3.5 w-3.5" /> : <PowerOff className="h-3.5 w-3.5" />}
+                          {u.isActive ? 'Activo' : 'Inactivo'}
+                        </button>
+                      </>
                     )}
                   </li>
                 ))}
@@ -227,6 +341,13 @@ export function UsersPage() {
           </Card>
         </div>
       </div>
+
+      {resetTarget && (
+        <ResetPasswordModal
+          user={resetTarget}
+          onClose={() => setResetTarget(null)}
+        />
+      )}
     </div>
   )
 }

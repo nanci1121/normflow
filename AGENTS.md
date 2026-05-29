@@ -163,11 +163,20 @@ cd backend && npx prisma generate
 ```
 tests/
   unit/
-    store.test.ts       — lógica de DocumentStore en aislamiento
+    email.test.ts               — plantillas de email en aislamiento
   integration/
-    documents.test.ts   — endpoints de documentos contra BD de test
-    lifecycle.test.ts   — transiciones de estado completas
-    audit.test.ts       — append-only y contenido del AuditEvent
+    documents.test.ts           — endpoints de documentos contra BD de test
+    lifecycle.test.ts           — transiciones de estado completas
+    approval-workflows.test.ts  — configuración y uso de flujos por categoría
+    document-access.test.ts     — ACL: conceder, revocar, listar grants
+    audit.test.ts               — append-only y contenido del AuditEvent
+    export.test.ts              — exportación CSV/PDF de auditoría
+  functional/
+    helpers.ts                  — setup/teardown común, inject, createDoc, createUser
+    lifecycle-scenarios.test.ts — journeys completos (crear → submit → approve → obsolete, recuperación tras reject)
+    approval-workflow-scenarios.test.ts — workflow por categoría con aprobación secuencial
+    acl-scenarios.test.ts       — grant/revoke/consulta completo, permisos de admin
+    audit-scenarios.test.ts     — eventos + filtros + export CSV/PDF verificados
 ```
 
 ### Reglas
@@ -182,7 +191,7 @@ tests/
 
 > **Ningún código nuevo (backend o frontend) se considera completo sin sus tests.**
 >
-> - Backend: tests de integración en `backend/tests/integration/` y unitarios en `backend/tests/unit/`
+> - Backend: tests de integración en `backend/tests/integration/`, funcionales en `backend/tests/functional/` y unitarios en `backend/tests/unit/`
 > - Frontend: tests con Vitepor carpeta `frontend/src/__tests__/` (nombrados `*.test.tsx`)
 > - Toda nueva página, componente o hook debe tener al menos un test que cubra:
 >   - **Renderizado** — que el componente se monta sin errores
@@ -207,8 +216,10 @@ tests/
 
 ## Roadmap (para no duplicar trabajo)
 
-- [ ] Autenticación JWT + roles (admin, owner, approver, reader)
+- [x] Autenticación JWT + roles (admin, owner, approver, reader)
+- [x] Notificaciones email al entrar en revisión / aprobar / rechazar
+- [x] Exportación de auditoría en PDF/CSV para auditorías ISO
+- [x] ACL por usuario para documentos `restricted`
+- [x] Tests funcionales (E2E) — journeys completos de principio a fin
 - [ ] Conexión BD real en producción
-- [ ] Notificaciones email al entrar en revisión / aprobar
-- [ ] Exportación de auditoría en PDF/CSV para auditorías ISO
-- [ ] ACL por usuario para documentos `restricted`
+- [ ] Integración con proveedor de firma electrónica avanzada

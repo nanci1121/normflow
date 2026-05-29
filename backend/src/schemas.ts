@@ -24,6 +24,29 @@ export const createUserSchema = {
   },
 } as const;
 
+export const resetPasswordSchema = {
+  body: {
+    type: "object",
+    required: ["newPassword"],
+    properties: {
+      newPassword: { type: "string", minLength: 8 },
+    },
+    additionalProperties: false,
+  },
+} as const;
+
+export const changePasswordSchema = {
+  body: {
+    type: "object",
+    required: ["currentPassword", "newPassword"],
+    properties: {
+      currentPassword: { type: "string", minLength: 1 },
+      newPassword: { type: "string", minLength: 8 },
+    },
+    additionalProperties: false,
+  },
+} as const;
+
 export const setApprovalWorkflowSchema = {
   body: {
     type: "object",

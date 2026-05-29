@@ -8,7 +8,13 @@ export type AuditAction =
   | "document.approved"
   | "document.rejected"
   | "document.signed"
-  | "document.obsoleted";
+  | "document.obsoleted"
+  | "user.password_reset";
+
+export interface ApprovalProgress {
+  approvedSteps: number;
+  totalSteps: number;
+}
 
 export interface DocumentVersion {
   id: string;
@@ -47,6 +53,7 @@ export interface DocumentRecord {
   approvals: DocumentApproval[];
   signatures: string[];
   obsoleteReason?: string;
+  approvalProgress: ApprovalProgress;
 }
 
 export interface AuditEvent {
@@ -65,6 +72,7 @@ export interface PublicUser {
   name: string;
   role: UserRole;
   isActive: boolean;
+  mustChangePassword: boolean;
 }
 
 export interface LoginInput {
@@ -145,6 +153,15 @@ export class HttpError extends Error {
 export interface SignDocumentInput {
   actorId: string;
   signatureValue: string;
+}
+
+export interface ResetPasswordInput {
+  newPassword: string;
+}
+
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export interface UserContext {

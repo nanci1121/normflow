@@ -4,10 +4,30 @@ export interface User {
   name: string
   role: 'admin' | 'owner' | 'approver' | 'reader'
   isActive: boolean
+  mustChangePassword: boolean
 }
 
 export interface AuthTokens {
   accessToken: string
+}
+
+export interface LoginResponse {
+  accessToken: string
+  mustChangePassword: boolean
+}
+
+export interface ChangePasswordInput {
+  currentPassword: string
+  newPassword: string
+}
+
+export interface ResetPasswordInput {
+  newPassword: string
+}
+
+export interface ResetPasswordResponse {
+  message: string
+  temporaryPassword: string
 }
 
 export interface LoginCredentials {
@@ -18,6 +38,11 @@ export interface LoginCredentials {
 export type UserRole = 'admin' | 'owner' | 'approver' | 'reader'
 
 export type DocumentStatus = 'draft' | 'in_review' | 'approved' | 'obsolete'
+
+export interface ApprovalProgress {
+  approvedSteps: number
+  totalSteps: number
+}
 
 export interface DocumentSummary {
   id: string
@@ -31,6 +56,7 @@ export interface DocumentSummary {
   createdAt: string
   updatedAt: string
   approvals: DocumentApproval[]
+  approvalProgress: ApprovalProgress
 }
 
 export interface DocumentVersion {

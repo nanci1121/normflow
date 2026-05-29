@@ -34,6 +34,17 @@ function toIsoString(date: Date): string {
   return date.toISOString();
 }
 
+function computeApprovalProgress(
+  status: string,
+  approvals: Array<{ status: string }>
+): { approvedSteps: number; totalSteps: number } {
+  if (approvals.length === 0) {
+    return { approvedSteps: 0, totalSteps: 0 };
+  }
+  const approvedSteps = approvals.filter((a) => a.status === "approved").length;
+  return { approvedSteps, totalSteps: approvals.length };
+}
+
 function mapDocument(
   doc: Awaited<ReturnType<typeof prisma.document.findUnique>> & {
     versions: Awaited<ReturnType<typeof prisma.documentVersion.findMany>>;
@@ -73,6 +84,7 @@ function mapDocument(
       decidedAt: a.decidedAt ? toIsoString(a.decidedAt) : undefined,
     })),
     signatures: doc!.signatures,
+    approvalProgress: computeApprovalProgress(doc!.status, doc!.approvals),
   };
 }
 
@@ -132,13 +144,15 @@ export class DocumentStore {
     return user?.email;
   }
   private canViewDocument(
-    doc: { visibility: string; ownerId: string },
+    doc: { visibility: string; ownerId: string; grants?: Array<{ userId: string }> },
     user?: UserContext
   ): boolean {
     if (doc.visibility !== "restricted") return true;
     if (!user) return false;
     if (user.role === "admin") return true;
-    return doc.ownerId === user.id;
+    if (doc.ownerId === user.id) return true;
+    if (doc.grants?.some((g) => g.userId === user.id)) return true;
+    return false;
   }
 
   async listDocuments(query?: string, user?: UserContext): Promise<DocumentRecord[]> {
@@ -147,11 +161,12 @@ export class DocumentStore {
       include: {
         versions: { orderBy: { createdAt: "desc" } },
         approvals: true,
+        grants: { select: { userId: true } },
       },
       orderBy: { createdAt: "desc" },
     });
 
-    const filtered = documents.filter((doc) => this.canViewDocument(doc, user));
+    const filtered = documents.filter((doc) => this.canViewDocument(doc as never, user));
 
     if (!normalizedQuery) {
       return filtered.map((d) => mapDocument(d as never));
@@ -181,10 +196,11 @@ export class DocumentStore {
       include: {
         versions: { orderBy: { createdAt: "desc" } },
         approvals: true,
+        grants: { select: { userId: true } },
       },
     });
 
-    if (!document || !this.canViewDocument(document, user)) return undefined;
+    if (!document || !this.canViewDocument(document as never, user)) return undefined;
     return mapDocument(document as never);
   }
 
@@ -681,12 +697,102 @@ export class DocumentStore {
     return mapDocument(updated as never);
   }
 
-  async getAuditEvents(documentId?: string): Promise<AuditEvent[]> {
+  async getAuditEvents(
+    documentId?: string,
+    filters?: { from?: string; to?: string; actorId?: string; action?: string }
+  ): Promise<AuditEvent[]> {
+    const where: Record<string, unknown> = {};
+    if (documentId) where["entityId"] = documentId;
+    if (filters?.actorId) where["actorId"] = filters.actorId;
+    if (filters?.action) where["action"] = filters.action;
+    if (filters?.from || filters?.to) {
+      const timestamp: Record<string, Date> = {};
+      if (filters.from) timestamp["gte"] = new Date(filters.from);
+      if (filters.to) timestamp["lte"] = new Date(filters.to);
+      where["timestamp"] = timestamp;
+    }
+
     const events = await prisma.auditEvent.findMany({
-      where: documentId ? { entityId: documentId } : undefined,
+      where: where as Prisma.AuditEventWhereInput,
       orderBy: { timestamp: "desc" },
     });
 
     return events.map((event) => mapAuditEvent(event));
+  }
+
+  async grantDocumentAccess(
+    documentId: string,
+    userId: string,
+    actorId: string
+  ): Promise<{ userId: string }> {
+    const document = await prisma.document.findUnique({
+      where: { id: documentId },
+      select: { ownerId: true, visibility: true },
+    });
+    if (!document) throw new HttpError(404, "Documento no encontrado");
+    if (document.visibility !== "restricted") {
+      throw new HttpError(422, "Solo documentos restricted pueden tener accesos concedidos");
+    }
+    if (document.ownerId !== actorId) {
+      throw new HttpError(403, "Solo el propietario puede conceder acceso");
+    }
+
+    try {
+      await prisma.documentAccess.create({
+        data: { documentId, userId, grantedBy: actorId },
+      });
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new HttpError(409, "El usuario ya tiene acceso a este documento");
+      }
+      throw error;
+    }
+
+    return { userId };
+  }
+
+  async revokeDocumentAccess(documentId: string, userId: string, actorId: string): Promise<void> {
+    const document = await prisma.document.findUnique({
+      where: { id: documentId },
+      select: { ownerId: true },
+    });
+    if (!document) throw new HttpError(404, "Documento no encontrado");
+    if (document.ownerId !== actorId) {
+      throw new HttpError(403, "Solo el propietario puede revocar acceso");
+    }
+
+    const result = await prisma.documentAccess.deleteMany({
+      where: { documentId, userId },
+    });
+    if (result.count === 0) {
+      throw new HttpError(404, "El usuario no tiene acceso a este documento");
+    }
+  }
+
+  async listDocumentGrants(documentId: string, actorId: string): Promise<
+    Array<{ userId: string; userName: string; userEmail: string; grantedBy: string; createdAt: string }>
+  > {
+    const document = await prisma.document.findUnique({
+      where: { id: documentId },
+      select: { ownerId: true },
+    });
+    if (!document) throw new HttpError(404, "Documento no encontrado");
+    if (document.ownerId !== actorId) {
+      throw new HttpError(403, "Solo el propietario puede ver los accesos concedidos");
+    }
+
+    const grants = await prisma.documentAccess.findMany({
+      where: { documentId },
+      include: { user: { select: { id: true, name: true, email: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return grants.map((g) => ({
+      userId: g.userId,
+      userName: g.user.name,
+      userEmail: g.user.email,
+      grantedBy: g.grantedBy,
+      createdAt: toIsoString(g.createdAt),
+    }));
   }
 }

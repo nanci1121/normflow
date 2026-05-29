@@ -34,6 +34,7 @@ const mockDocs = [
         decidedAt: '2026-05-26T00:00:00Z',
       },
     ],
+    approvalProgress: { approvedSteps: 1, totalSteps: 1 },
   },
   {
     id: 'doc-2',
@@ -48,6 +49,7 @@ const mockDocs = [
     createdAt: '2026-05-01T00:00:00Z',
     updatedAt: '2026-05-26T00:00:00Z',
     approvals: [],
+    approvalProgress: { approvedSteps: 0, totalSteps: 0 },
   },
 ]
 
@@ -111,5 +113,61 @@ describe('DocumentsListPage', () => {
       expect(links).toHaveLength(2)
     })
     expect(screen.getAllByText('Ver detalle')[0]).toHaveAttribute('href', '/documents/doc-1')
+  })
+
+  it('columna Flujo: muestra Completo para documento aprobado', async () => {
+    mockListDocuments.mockResolvedValue(mockDocs)
+    renderWithProviders(<DocumentsListPage />)
+
+    expect(await screen.findByText('Completo')).toBeInTheDocument()
+    expect(screen.getByText('Flujo')).toBeInTheDocument()
+  })
+
+  it('columna Flujo: muestra Sin flujo para draft sin aprobaciones', async () => {
+    mockListDocuments.mockResolvedValue(mockDocs)
+    renderWithProviders(<DocumentsListPage />)
+
+    expect(await screen.findByText('Sin flujo')).toBeInTheDocument()
+  })
+
+  it('columna Flujo: muestra progreso parcial para in_review', async () => {
+    const inReviewDocs = [
+      {
+        ...mockDocs[0],
+        id: 'doc-3',
+        code: 'QA-REV-003',
+        status: 'in_review' as const,
+        approvalProgress: { approvedSteps: 1, totalSteps: 3 },
+        approvals: [
+          { id: 'a1', approverId: 'u1', stepOrder: 1, status: 'approved' as const },
+          { id: 'a2', approverId: 'u2', stepOrder: 2, status: 'pending' as const },
+          { id: 'a3', approverId: 'u3', stepOrder: 3, status: 'pending' as const },
+        ],
+      },
+    ]
+    mockListDocuments.mockResolvedValue(inReviewDocs)
+    renderWithProviders(<DocumentsListPage />)
+
+    expect(await screen.findByText('Paso 2/3')).toBeInTheDocument()
+  })
+
+  it('columna Flujo: muestra progreso numérico sin stepOrder', async () => {
+    const flatDocs = [
+      {
+        ...mockDocs[0],
+        id: 'doc-4',
+        code: 'QA-FLAT-004',
+        status: 'in_review' as const,
+        approvalProgress: { approvedSteps: 1, totalSteps: 2 },
+        approvals: [
+          { id: 'a1', approverId: 'u1', status: 'approved' as const },
+          { id: 'a2', approverId: 'u2', status: 'pending' as const },
+        ],
+      },
+    ]
+    mockListDocuments.mockResolvedValue(flatDocs)
+    renderWithProviders(<DocumentsListPage />)
+
+    expect(await screen.findByText('1/2')).toBeInTheDocument()
   })
 })

@@ -349,6 +349,118 @@ describe("Document Lifecycle", () => {
     await app.close();
   });
 
+  it("approvalProgress: draft → { approvedSteps: 0, totalSteps: 0 }", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const token = generateToken(user);
+    const doc = await createDoc(app, token, user.id);
+
+    expect(doc.approvalProgress).toEqual({ approvedSteps: 0, totalSteps: 0 });
+
+    const listRes = await inject(app, "GET", "/api/v1/documents", { token });
+    expect(listRes.statusCode).toBe(200);
+    const listItem = listRes.json().items.find((d: Record<string, unknown>) => d.id === doc.id);
+    expect(listItem.approvalProgress).toEqual({ approvedSteps: 0, totalSteps: 0 });
+
+    await app.close();
+  });
+
+  it("approvalProgress: in_review → { approvedSteps: 0, totalSteps: 1 }", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const { user: approver } = await createTestUser(prisma);
+    const ownerToken = generateToken(user);
+    const doc = await createDoc(app, ownerToken, user.id);
+
+    const submitRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token: ownerToken,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+    expect(submitRes.statusCode).toBe(200);
+    expect(submitRes.json().approvalProgress).toEqual({ approvedSteps: 0, totalSteps: 1 });
+
+    await app.close();
+  });
+
+  it("approvalProgress: approved → { approvedSteps: 1, totalSteps: 1 }", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const { user: approver } = await createTestUser(prisma);
+    const ownerToken = generateToken(user);
+    const approverToken = generateToken(approver);
+    const doc = await createDoc(app, ownerToken, user.id);
+
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token: ownerToken,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+    const approveRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "approved" },
+    });
+    expect(approveRes.statusCode).toBe(200);
+    expect(approveRes.json().approvalProgress).toEqual({ approvedSteps: 1, totalSteps: 1 });
+
+    await app.close();
+  });
+
+  it("approvalProgress: obsolete → { approvedSteps: 1, totalSteps: 1 }", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const { user: approver } = await createTestUser(prisma);
+    const ownerToken = generateToken(user);
+    const approverToken = generateToken(approver);
+    const doc = await createDoc(app, ownerToken, user.id);
+
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token: ownerToken,
+      payload: { actorId: user.id, approverIds: [approver.id] },
+    });
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
+      token: approverToken,
+      payload: { approverId: approver.id, decision: "approved" },
+    });
+    const obsoleteRes = await inject(app, "POST", `/api/v1/documents/${doc.id}/obsolete`, {
+      token: ownerToken,
+      payload: { actorId: user.id, reason: "Replaced" },
+    });
+    expect(obsoleteRes.statusCode).toBe(200);
+    expect(obsoleteRes.json().approvalProgress).toEqual({ approvedSteps: 1, totalSteps: 1 });
+
+    await app.close();
+  });
+
+  it("approvalProgress: múltiples aprobadores, progreso parcial", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const { user: approver1 } = await createTestUser(prisma);
+    const { user: approver2 } = await createTestUser(prisma);
+    const ownerToken = generateToken(user);
+    const approver1Token = generateToken(approver1);
+    const doc = await createDoc(app, ownerToken, user.id);
+
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/submit`, {
+      token: ownerToken,
+      payload: { actorId: user.id, approverIds: [approver1.id, approver2.id] },
+    });
+
+    await inject(app, "POST", `/api/v1/documents/${doc.id}/approve`, {
+      token: approver1Token,
+      payload: { approverId: approver1.id, decision: "approved" },
+    });
+
+    const detailRes = await inject(app, "GET", `/api/v1/documents/${doc.id}`, { token: ownerToken });
+    expect(detailRes.statusCode).toBe(200);
+    expect(detailRes.json().approvalProgress).toEqual({ approvedSteps: 1, totalSteps: 2 });
+
+    await app.close();
+  });
+
   it("usuario no aprobador recibe 403 al intentar aprobar", async () => {
     const app = buildApp();
     await app.ready();
