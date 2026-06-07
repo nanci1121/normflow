@@ -44,6 +44,12 @@ export interface ApprovalProgress {
   totalSteps: number
 }
 
+export interface DocumentCircuitInfo {
+  workflowId: string
+  category: string
+  steps: ApprovalWorkflowStep[]
+}
+
 export interface DocumentSummary {
   id: string
   code: string
@@ -57,6 +63,7 @@ export interface DocumentSummary {
   updatedAt: string
   approvals: DocumentApproval[]
   approvalProgress: ApprovalProgress
+  approvalCircuit?: DocumentCircuitInfo
 }
 
 export interface DocumentVersion {

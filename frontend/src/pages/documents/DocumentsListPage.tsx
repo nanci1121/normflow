@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TableSkeleton } from '@/components/ui/LoadingSkeleton'
-import type { ApprovalProgress as ApprovalProgressType, DocumentApproval, DocumentStatus } from '@/types'
+import type { ApprovalProgress as ApprovalProgressType, DocumentApproval, DocumentStatus, DocumentCircuitInfo } from '@/types'
 
 function timeAgo(isoDate: string): string {
   const diff = Math.floor((Date.now() - new Date(isoDate).getTime()) / 1000)
@@ -17,44 +17,64 @@ function timeAgo(isoDate: string): string {
   return `hace ${Math.floor(diff / 86400)} d`
 }
 
+function CircuitBadge({ circuit }: { circuit?: DocumentCircuitInfo }) {
+  if (!circuit) return <span className="text-xs text-gray-400">Sin circuito</span>
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700 ring-1 ring-primary-200/50">
+      {circuit.category}
+      <span className="text-primary-400">·</span>
+      {circuit.steps.length} paso{circuit.steps.length !== 1 ? 's' : ''}
+    </span>
+  )
+}
+
 function ApprovalProgress({
   status,
   progress,
   approvals,
+  circuit,
 }: {
   status: DocumentStatus
   progress: ApprovalProgressType
   approvals: DocumentApproval[]
+  circuit?: DocumentCircuitInfo
 }) {
-  if (status === 'draft' || progress.totalSteps === 0) {
-    return <span className="text-xs text-gray-400">Sin flujo</span>
-  }
-
-  if (status === 'obsolete') {
+  if (status === 'draft' && !circuit) {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-green-600">
-        <CheckCircle className="h-3.5 w-3.5" />
-        Completo
-      </span>
+      <div className="flex flex-col gap-1">
+        <span className="text-xs text-gray-400">Sin flujo</span>
+        <CircuitBadge circuit={circuit} />
+      </div>
     )
   }
 
-  if (progress.approvedSteps === progress.totalSteps) {
+  if (status === 'obsolete' || progress.totalSteps === 0) {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-green-600">
-        <CheckCircle className="h-3.5 w-3.5" />
-        Completo
-      </span>
+      <div className="flex flex-col gap-1">
+        <span className="inline-flex items-center gap-1 text-xs text-green-600">
+          <CheckCircle className="h-3.5 w-3.5" />
+          {status === 'obsolete' ? 'Obsoleto' : 'Completo'}
+        </span>
+        <CircuitBadge circuit={circuit} />
+      </div>
     )
   }
 
+  const allApproved = progress.approvedSteps === progress.totalSteps
   const stepInfo = approvals[0]?.stepOrder != null
     ? `Paso ${progress.approvedSteps + 1}/${progress.totalSteps}`
     : `${progress.approvedSteps}/${progress.totalSteps}`
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs text-amber-600 font-medium">{stepInfo}</span>
+      {allApproved ? (
+        <span className="inline-flex items-center gap-1 text-xs text-green-600">
+          <CheckCircle className="h-3.5 w-3.5" />
+          Completo
+        </span>
+      ) : (
+        <span className="text-xs text-amber-600 font-medium">{stepInfo}</span>
+      )}
       <div className="flex gap-0.5">
         {approvals.map((a, i) => (
           <div
@@ -65,6 +85,7 @@ function ApprovalProgress({
           />
         ))}
       </div>
+      <CircuitBadge circuit={circuit} />
     </div>
   )
 }
@@ -214,7 +235,7 @@ export function DocumentsListPage() {
                       <StatusBadge status={doc.status as DocumentStatus} />
                     </td>
                     <td className="px-6 py-4">
-                      <ApprovalProgress status={doc.status as DocumentStatus} progress={doc.approvalProgress} approvals={doc.approvals} />
+                      <ApprovalProgress status={doc.status as DocumentStatus} progress={doc.approvalProgress} approvals={doc.approvals} circuit={doc.approvalCircuit} />
                     </td>
                     <td className="px-6 py-4 text-xs text-gray-400">{timeAgo(doc.updatedAt)}</td>
                     <td className="px-6 py-4 text-right">

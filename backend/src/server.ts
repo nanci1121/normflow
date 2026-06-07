@@ -7,6 +7,7 @@ async function main() {
   const host = process.env.HOST ?? "0.0.0.0";
   const emailService = createEmailService();
   const app = buildApp(emailService);
+  console.log("[server] DB:", (process.env.DATABASE_URL ?? "").replace(/:.+@/, "://***:***@"));
 
   try {
     await app.listen({ port, host });

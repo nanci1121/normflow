@@ -151,6 +151,48 @@ describe('DocumentsListPage', () => {
     expect(await screen.findByText('Paso 2/3')).toBeInTheDocument()
   })
 
+  it('columna Flujo: muestra circuito cuando approvalCircuit está presente', async () => {
+    const docsWithCircuit = [
+      {
+        ...mockDocs[0],
+        approvalCircuit: {
+          workflowId: 'wf-1',
+          category: 'Manual de calidad',
+          steps: [
+            { id: 's1', stepOrder: 1, approverId: 'u1', approverName: 'QA Approver', approverEmail: 'qa@test.com', responsibility: 'QA Review' },
+          ],
+        },
+      },
+      {
+        ...mockDocs[1],
+        approvalCircuit: {
+          workflowId: 'wf-2',
+          category: 'Procedimiento',
+          steps: [
+            { id: 's2', stepOrder: 1, approverId: 'u2', approverName: 'R&D Approver', approverEmail: 'rd@test.com', responsibility: 'R&D Validation' },
+            { id: 's3', stepOrder: 2, approverId: 'u3', approverName: 'Final Approver', approverEmail: 'final@test.com', responsibility: 'Final Approval' },
+          ],
+        },
+      },
+    ]
+    mockListDocuments.mockResolvedValue(docsWithCircuit)
+    renderWithProviders(<DocumentsListPage />)
+
+    await waitFor(() => {
+      const circuitBadges = screen.getAllByText((_content, element) => {
+        return element.className?.includes?.('bg-primary-50') ?? false
+      })
+      expect(circuitBadges.length).toBe(2)
+    })
+  })
+
+  it('columna Flujo: muestra Sin circuito cuando no hay approvalCircuit', async () => {
+    mockListDocuments.mockResolvedValue(mockDocs)
+    renderWithProviders(<DocumentsListPage />)
+
+    expect(await screen.findAllByText('Sin circuito')).toHaveLength(2)
+  })
+
   it('columna Flujo: muestra progreso numérico sin stepOrder', async () => {
     const flatDocs = [
       {

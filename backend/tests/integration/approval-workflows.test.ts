@@ -151,4 +151,58 @@ describe("Approval Workflows API", () => {
 
     await app.close();
   });
+
+  it("GET /api/v1/documents incluye approvalCircuit cuando hay workflow configurado", async () => {
+    const app = buildApp();
+    await app.ready();
+
+    const { user: admin } = await createTestUser(prisma, { role: "admin" });
+    const { user: owner } = await createTestUser(prisma, { role: "owner" });
+    const { user: approver } = await createTestUser(prisma, { role: "approver", name: "Circuit Approver" });
+    const adminToken = generateToken(admin);
+    const ownerToken = generateToken(owner);
+
+    await inject(app, "PUT", "/api/v1/approval-workflows/calidad", {
+      token: adminToken,
+      payload: {
+        steps: [{ approverId: approver.id, responsibility: "Revisión calidad" }],
+      },
+    });
+
+    const doc = await createDoc(app, ownerToken, owner.id, "calidad");
+
+    const listRes = await inject(app, "GET", "/api/v1/documents", { token: ownerToken });
+    expect(listRes.statusCode).toBe(200);
+    const found = listRes.json().items.find((d: { code: string }) => d.code === doc.code);
+    expect(found).toBeDefined();
+    expect(found.approvalCircuit).toBeDefined();
+    expect(found.approvalCircuit.category).toBe("calidad");
+    expect(found.approvalCircuit.steps).toHaveLength(1);
+    expect(found.approvalCircuit.steps[0].approverName).toBe("Circuit Approver");
+
+    const detailRes = await inject(app, "GET", `/api/v1/documents/${doc.id}`, { token: ownerToken });
+    expect(detailRes.statusCode).toBe(200);
+    expect(detailRes.json().approvalCircuit).toBeDefined();
+    expect(detailRes.json().approvalCircuit.category).toBe("calidad");
+
+    await app.close();
+  });
+
+  it("GET /api/v1/documents no incluye approvalCircuit si no hay workflow", async () => {
+    const app = buildApp();
+    await app.ready();
+
+    const { user: owner } = await createTestUser(prisma, { role: "owner" });
+    const token = generateToken(owner);
+    const doc = await createDoc(app, token, owner.id, "sin-flujo");
+
+    const listRes = await inject(app, "GET", "/api/v1/documents", { token });
+    const found = listRes.json().items.find((d: { code: string }) => d.code === doc.code);
+    expect(found.approvalCircuit).toBeUndefined();
+
+    const detailRes = await inject(app, "GET", `/api/v1/documents/${doc.id}`, { token });
+    expect(detailRes.json().approvalCircuit).toBeUndefined();
+
+    await app.close();
+  });
 });

@@ -12,7 +12,8 @@
     "migrate": "npm --prefix backend run prisma:migrate",
     "seed": "npm --prefix backend run prisma:seed",
     "dev:backend": "npm --prefix backend run dev",
-    "dev:frontend": "npm --prefix frontend run dev"
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:local": "powershell -ExecutionPolicy Bypass -File scripts/dev-local.ps1"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

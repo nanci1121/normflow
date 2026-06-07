@@ -130,6 +130,45 @@ function mapApprovalWorkflow(
 export class DocumentStore {
   constructor(private emailService?: EmailService) {}
 
+  private async enrichWithCircuits(docs: DocumentRecord[]): Promise<DocumentRecord[]> {
+    const categories = [...new Set(docs.map((d) => d.category.toLowerCase()))];
+    const workflows = await prisma.approvalWorkflow.findMany({
+      where: { category: { in: categories } },
+      include: {
+        steps: {
+          include: {
+            approver: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { stepOrder: "asc" },
+        },
+      },
+    });
+
+    const wfByCategory = new Map(workflows.map((w) => [w.category, w]));
+
+    const result = docs.map((doc) => {
+      const wf = wfByCategory.get(doc.category.toLowerCase());
+      if (!wf) return doc;
+      return {
+        ...doc,
+        approvalCircuit: {
+          workflowId: wf.id,
+          category: wf.category,
+          steps: wf.steps.map((s) => ({
+            id: s.id,
+            stepOrder: s.stepOrder,
+            approverId: s.approverId,
+            approverName: s.approver.name,
+            approverEmail: s.approver.email,
+            responsibility: s.responsibility,
+          })),
+        },
+      };
+    });
+
+    return result;
+  }
+
   private async sendEmail(opts: { to: string[]; subject: string; html: string }): Promise<void> {
     if (!this.emailService) return;
     try {
@@ -168,26 +207,28 @@ export class DocumentStore {
 
     const filtered = documents.filter((doc) => this.canViewDocument(doc as never, user));
 
+    const mapped = filtered.map((d) => mapDocument(d as never));
+
     if (!normalizedQuery) {
-      return filtered.map((d) => mapDocument(d as never));
+      return this.enrichWithCircuits(mapped);
     }
 
-    return filtered
-      .filter((doc) => {
-        const haystack = [
-          doc.code,
-          doc.title,
-          doc.description,
-          doc.category,
-          doc.status,
-          doc.ownerId,
-          ...doc.standardTags,
-        ]
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(normalizedQuery);
-      })
-      .map((d) => mapDocument(d as never));
+    const filteredMapped = mapped.filter((doc) => {
+      const haystack = [
+        doc.code,
+        doc.title,
+        doc.description,
+        doc.category,
+        doc.status,
+        doc.ownerId,
+        ...doc.standardTags,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+
+    return this.enrichWithCircuits(filteredMapped);
   }
 
   async getDocument(id: string, user?: UserContext): Promise<DocumentRecord | undefined> {
@@ -201,7 +242,8 @@ export class DocumentStore {
     });
 
     if (!document || !this.canViewDocument(document as never, user)) return undefined;
-    return mapDocument(document as never);
+    const enriched = await this.enrichWithCircuits([mapDocument(document as never)]);
+    return enriched[0];
   }
 
   async createDocument(input: CreateDocumentInput): Promise<DocumentRecord> {

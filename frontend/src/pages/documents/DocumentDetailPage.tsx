@@ -13,6 +13,9 @@ import {
   History,
   Users,
   FileSignature,
+  GitBranch,
+  Check,
+  X,
 } from 'lucide-react'
 import { getDocument, submitDocument, resolveApproval, signDocument, obsoleteDocument, getDocumentAudit } from '@/api/documents'
 import { Button } from '@/components/ui/Button'
@@ -22,7 +25,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/LoadingSkeleton'
 import { useAuth } from '@/contexts/AuthContext'
-import type { DocumentDetail, DocumentStatus, DocumentVersion } from '@/types'
+import type { DocumentDetail, DocumentStatus, DocumentVersion, DocumentCircuitInfo } from '@/types'
 
 type Tab = 'info' | 'versions' | 'approvals' | 'signatures' | 'audit'
 
@@ -171,14 +174,86 @@ function VersionsTab({ versions }: { versions: DocumentVersion[] }) {
   )
 }
 
+function CircuitSection({ circuit, approvals }: { circuit?: DocumentCircuitInfo; approvals: DocumentApproval[] }) {
+  if (!circuit) return null
+
+  const approvalByApproverId = new Map(approvals.map((a) => [a.approverId, a]))
+
+  return (
+    <Card>
+      <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-900">
+        <GitBranch className="h-4 w-4 text-primary-600" />
+        Circuito de aprobación: {circuit.category}
+      </h3>
+      <div className="space-y-3">
+        {circuit.steps.map((step, idx) => {
+          const approval = approvalByApproverId.get(step.approverId)
+          const status = approval?.status ?? 'pending'
+          const isActive = approval?.status === 'pending'
+          const isDone = approval?.status === 'approved'
+          const isRejected = approval?.status === 'rejected'
+          return (
+            <div key={step.id} className="flex items-start gap-3">
+              {/* Step indicator */}
+              <div className="flex flex-col items-center">
+                <div
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                    isDone
+                      ? 'bg-green-100 text-green-700 ring-1 ring-green-300'
+                      : isRejected
+                        ? 'bg-red-100 text-red-700 ring-1 ring-red-300'
+                        : isActive
+                          ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300'
+                          : 'bg-gray-100 text-gray-400 ring-1 ring-gray-200'
+                  }`}
+                >
+                  {isDone ? <Check className="h-4 w-4" /> : isRejected ? <X className="h-4 w-4" /> : idx + 1}
+                </div>
+                {idx < circuit.steps.length - 1 && (
+                  <div className="mt-1 h-6 w-px bg-gray-200" />
+                )}
+              </div>
+              {/* Step info */}
+              <div className="flex-1 pb-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-900">{step.approverName}</p>
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    isDone
+                      ? 'bg-green-100 text-green-700'
+                      : isRejected
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {isDone ? 'Aprobado' : isRejected ? 'Rechazado' : 'Pendiente'}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">{step.responsibility}</p>
+                {approval?.comment && (
+                  <p className="mt-1 text-xs text-gray-400 italic">"{approval.comment}"</p>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
+}
+
 function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [comment, setComment] = useState('')
-  const [approverId, setApproverId] = useState('')
+
+  const circuit = doc.approvalCircuit
 
   const submitMutation = useMutation({
-    mutationFn: () => submitDocument(doc.id, user!.id, [approverId]),
+    mutationFn: () => {
+      const approverIds = circuit
+        ? circuit.steps.map((s) => s.approverId)
+        : []
+      return submitDocument(doc.id, user!.id, approverIds)
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['document', doc.id] }),
   })
 
@@ -196,37 +271,73 @@ function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Circuit info */}
+      <CircuitSection circuit={circuit as DocumentCircuitInfo | undefined} approvals={doc.approvals} />
+
+      {/* Submit section */}
       {doc.status === 'draft' && (
         <Card>
           <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-900">
             <Send className="h-4 w-4" />
             Enviar a revisión
           </h3>
-          <div className="flex items-end gap-3">
-            <Input
-              label="ID del aprobador"
-              value={approverId}
-              onChange={(e) => setApproverId(e.target.value)}
-              placeholder="UUID del aprobador"
-            />
-            <Button
-              onClick={() => submitMutation.mutate()}
-              isLoading={submitMutation.isPending}
-              disabled={!approverId.trim()}
-            >
-              <Send className="h-4 w-4" />
-              Submit
-            </Button>
-          </div>
+          {circuit ? (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">
+                El documento se enviará con el circuito <strong>{circuit.category}</strong> ({circuit.steps.length} paso{circuit.steps.length !== 1 ? 's' : ''}):
+              </p>
+              <ul className="space-y-1.5">
+                {circuit.steps.map((step) => (
+                  <li key={step.id} className="flex items-center gap-2 text-sm text-gray-700">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-medium text-primary-700">
+                      {step.stepOrder}
+                    </span>
+                    <span className="font-medium">{step.approverName}</span>
+                    <span className="text-xs text-gray-400">— {step.responsibility}</span>
+                  </li>
+                ))}
+              </ul>
+              <Button
+                onClick={() => submitMutation.mutate()}
+                isLoading={submitMutation.isPending}
+              >
+                <Send className="h-4 w-4" />
+                Enviar a revisión
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-amber-600">
+                No hay circuito configurado para la categoría "{doc.category}".
+                Configúralo en Administración &gt; Circuitos de aprobación o añade aprobadores manualmente.
+              </p>
+              <p className="text-xs text-gray-400">
+                El backend usará el circuito automáticamente si existe.
+              </p>
+              <Button
+                onClick={() => submitMutation.mutate()}
+                isLoading={submitMutation.isPending}
+              >
+                <Send className="h-4 w-4" />
+                Enviar a revisión
+              </Button>
+            </div>
+          )}
         </Card>
       )}
 
+      {/* My decision */}
       {doc.status === 'in_review' && myPendingApproval && (
         <Card>
           <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-900">
             <CheckCircle className="h-4 w-4 text-green-600" />
             Tu decisión
           </h3>
+          {myPendingApproval.responsibility && (
+            <p className="mb-3 text-xs text-gray-500">
+              Responsabilidad: {myPendingApproval.responsibility}
+            </p>
+          )}
           <Textarea
             value={comment}
             onChange={(e) => setComment(e.target.value)}
@@ -253,6 +364,7 @@ function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
         </Card>
       )}
 
+      {/* Approval history */}
       <Card padding={false}>
         <CardHeader
           title="Historial de aprobaciones"
@@ -267,8 +379,9 @@ function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
             {doc.approvals.map((a) => (
               <li key={a.id} className="flex items-center justify-between px-6 py-4 transition-colors hover:bg-gray-50">
                 <div>
-                  <p className="font-mono text-sm text-gray-900">{a.approverId}</p>
-                  {a.comment && <p className="text-xs text-gray-500">{a.comment}</p>}
+                  <p className="text-sm text-gray-900">{a.approverId}</p>
+                  {a.responsibility && <p className="text-xs text-gray-500">{a.responsibility}</p>}
+                  {a.comment && <p className="text-xs text-gray-500 italic">{a.comment}</p>}
                   {a.decidedAt && (
                     <p className="text-xs text-gray-400">{formatDate(a.decidedAt)}</p>
                   )}

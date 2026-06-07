@@ -36,6 +36,12 @@ export interface DocumentApproval {
   decidedAt?: string;
 }
 
+export interface DocumentCircuitInfo {
+  workflowId: string;
+  category: string;
+  steps: ApprovalWorkflowStepRecord[];
+}
+
 export interface DocumentRecord {
   id: string;
   code: string;
@@ -54,6 +60,7 @@ export interface DocumentRecord {
   signatures: string[];
   obsoleteReason?: string;
   approvalProgress: ApprovalProgress;
+  approvalCircuit?: DocumentCircuitInfo;
 }
 
 export interface AuditEvent {

@@ -70,6 +70,16 @@ draft ──submit──► in_review ──approve──► approved ──obso
 ### Aprobaciones
 - Un `approverId` solo puede tener **una** entrada de aprobación por documento.
 
+### Approval Circuit (Circuito de aprobación)
+- Cada documento expone `approvalCircuit` en su respuesta (`GET /documents` y `GET /documents/:id`).
+- `approvalCircuit` contiene el `workflowId`, `category` y `steps[]` con `approverName`, `approverEmail` y `responsibility`.
+- Se resuelve automáticamente buscando el `ApprovalWorkflow` cuya categoría coincida (en minúsculas) con `document.category`.
+- Si no hay workflow configurado para la categoría, `approvalCircuit` es `undefined`.
+- En el frontend:
+  - **Lista de documentos**: columna "Flujo" muestra el nombre del circuito y número de pasos (ej: "Procedimiento · 2 pasos").
+  - **Detalle del documento**: pestaña "Aprobaciones" muestra el circuito completo con timeline visual (nombres, responsabilidad, estado actual).
+  - **Envío a revisión**: si el documento tiene circuito configurado, el botón "Enviar a revisión" usa automáticamente los aprobadores del circuito sin necesidad de IDs manuales.
+
 ---
 
 ## Convenciones de API
@@ -211,6 +221,9 @@ tests/
 | Transición inválida | HTTP 422 con mensaje descriptivo |
 | Aprobador duplicado | HTTP 409 |
 | Documento `restricted` | HTTP 404 en listado y detalle |
+| `approvalCircuit` en listado/detalle | Circuito presente cuando hay workflow, `undefined` cuando no |
+| Circuito en frontend | CircuitBadge visible en lista, CircuitSection con timeline en detalle |
+| Submit con circuito | Frontend envía aprobadores del circuito automáticamente |
 
 ---
 

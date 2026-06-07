@@ -157,6 +157,54 @@ describe('DocumentDetailPage', () => {
     expect(badges.length).toBeGreaterThanOrEqual(1)
   })
 
+  it('tab de aprobaciones muestra circuito cuando approvalCircuit está presente', async () => {
+    const docWithCircuit = {
+      ...mockDoc,
+      approvalCircuit: {
+        workflowId: 'wf-1',
+        category: 'Manual de calidad',
+        steps: [
+          { id: 's1', stepOrder: 1, approverId: 'user-002', approverName: 'QA Approver', approverEmail: 'qa@test.com', responsibility: 'Revisión calidad' },
+          { id: 's2', stepOrder: 2, approverId: 'user-003', approverName: 'R&D Approver', approverEmail: 'rd@test.com', responsibility: 'Validación técnica' },
+        ],
+      },
+    }
+    mockGetDocument.mockResolvedValue(docWithCircuit)
+    renderWithProviders(<DocumentDetailPage />)
+
+    expect(await screen.findByText('Manual de Calidad')).toBeInTheDocument()
+    await userEvent.click(screen.getByText('Aprobaciones'))
+
+    expect(await screen.findByText('Circuito de aprobación: Manual de calidad')).toBeInTheDocument()
+    expect(screen.getByText('QA Approver')).toBeInTheDocument()
+    expect(screen.getByText('R&D Approver')).toBeInTheDocument()
+    expect(screen.getByText('Revisión calidad')).toBeInTheDocument()
+    expect(screen.getByText('Validación técnica')).toBeInTheDocument()
+  })
+
+  it('draft con circuito: muestra botón de enviar a revisión con los pasos del circuito', async () => {
+    const draftWithCircuit = {
+      ...mockDoc,
+      status: 'draft' as const,
+      approvalCircuit: {
+        workflowId: 'wf-1',
+        category: 'Manual de calidad',
+        steps: [
+          { id: 's1', stepOrder: 1, approverId: 'user-002', approverName: 'QA Approver', approverEmail: 'qa@test.com', responsibility: 'Revisión calidad' },
+        ],
+      },
+    }
+    mockGetDocument.mockResolvedValue(draftWithCircuit)
+    renderWithProviders(<DocumentDetailPage />)
+
+    expect(await screen.findByText('Manual de Calidad')).toBeInTheDocument()
+    await userEvent.click(screen.getByText('Aprobaciones'))
+
+    expect(await screen.findByRole('button', { name: /Enviar a revisión/i })).toBeInTheDocument()
+    expect(screen.getAllByText('QA Approver').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Revisión calidad')).toBeInTheDocument()
+  })
+
   it('necesita motivo para obsolecer', async () => {
     mockGetDocument.mockResolvedValue(mockDoc)
     renderWithProviders(<DocumentDetailPage />)
