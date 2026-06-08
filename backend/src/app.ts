@@ -7,18 +7,34 @@ import { ApprovalWorkflowStepInput, ChangePasswordInput, CreateUserInput, HttpEr
 import { createEmailService } from "./email";
 import { exportAudit, ExportFormat } from "./export";
 import { prisma } from "./db";
+import { registerRateLimit } from "./rate-limit";
 
 export function buildApp(emailService?: ReturnType<typeof createEmailService>) {
   const app = Fastify({ logger: true });
   const store = new DocumentStore(emailService ?? undefined);
   const auth = new AuthService();
 
+  if (process.env["RATE_LIMIT_ENABLED"] === "true") {
+    registerRateLimit(app, {
+      maxRequests: 10,
+      windowMs: 60_000,
+      pathPatterns: [
+        /^\/api\/v1\/auth\/login/,
+        /^\/api\/v1\/documents\/[^/]+\/submit/,
+        /^\/api\/v1\/documents\/[^/]+\/approve/,
+      ],
+    });
+  }
+
   function handleError(error: unknown, fallbackStatusCode = 400) {
     if (error instanceof HttpError) {
       return { statusCode: error.statusCode, message: error.message };
     }
     if (error instanceof Error) {
-      return { statusCode: fallbackStatusCode, message: error.message };
+      return {
+        statusCode: fallbackStatusCode,
+        message: fallbackStatusCode >= 500 ? "Error inesperado" : error.message,
+      };
     }
     return { statusCode: fallbackStatusCode, message: "Error inesperado" };
   }
@@ -216,7 +232,7 @@ export function buildApp(emailService?: ReturnType<typeof createEmailService>) {
     }
   );
 
-  app.get("/api/v1/documents", async (request) => {
+  app.get("/api/v1/documents", async (request, reply) => {
     const query = request.query as {
       search?: string;
       status?: "draft" | "in_review" | "approved" | "obsolete";
@@ -231,20 +247,25 @@ export function buildApp(emailService?: ReturnType<typeof createEmailService>) {
     const user = getUserContext(request.headers.authorization);
     const page = typeof query.page === "string" ? Number(query.page) : query.page;
     const pageSize = typeof query.pageSize === "string" ? Number(query.pageSize) : query.pageSize;
-    return store.listDocuments(
-      {
-        search: query.search,
-        status: query.status,
-        category: query.category,
-        visibility: query.visibility,
-        owner: query.owner,
-        sortBy: query.sortBy,
-        sortOrder: query.sortOrder,
-        page: Number.isFinite(page as number) ? (page as number) : undefined,
-        pageSize: Number.isFinite(pageSize as number) ? (pageSize as number) : undefined,
-      },
-      user
-    );
+    try {
+      return await store.listDocuments(
+        {
+          search: query.search,
+          status: query.status,
+          category: query.category,
+          visibility: query.visibility,
+          owner: query.owner,
+          sortBy: query.sortBy,
+          sortOrder: query.sortOrder,
+          page: Number.isFinite(page as number) ? (page as number) : undefined,
+          pageSize: Number.isFinite(pageSize as number) ? (pageSize as number) : undefined,
+        },
+        user
+      );
+    } catch (error) {
+      const handled = handleError(error, 500);
+      return reply.code(handled.statusCode).send({ message: handled.message });
+    }
   });
 
   app.get("/api/v1/documents/:id", async (request, reply) => {
@@ -276,7 +297,7 @@ export function buildApp(emailService?: ReturnType<typeof createEmailService>) {
       const created = await store.createDocument(body);
       return reply.code(201).send(created);
     } catch (error) {
-      const handled = handleError(error, 400);
+      const handled = handleError(error, 500);
       return reply.code(handled.statusCode).send({ message: handled.message });
     }
   });

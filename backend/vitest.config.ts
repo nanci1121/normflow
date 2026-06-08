@@ -11,6 +11,7 @@ export default defineConfig({
     env: {
       DATABASE_URL: "postgresql://qms:qms_secret@localhost:5432/qms_platform_test?schema=public",
       JWT_SECRET: "test-jwt-secret-not-used-in-production",
+      RATE_LIMIT_ENABLED: "true",
     },
   },
 });
