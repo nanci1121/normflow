@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { FileText, CheckCircle, Clock, Archive, Activity } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { FileText, CheckCircle, Clock, Archive, Activity, AlertCircle, ArrowRight } from 'lucide-react'
 import { getOverview } from '@/api/documents'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { PageSkeleton } from '@/components/ui/LoadingSkeleton'
 import { Card, CardHeader } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
 import type { AuditEvent, DocumentStatus } from '@/types'
 
 const ACTION_LABELS: Record<string, string> = {
@@ -75,6 +77,8 @@ export function DashboardPage() {
     )
   }
 
+  const pendingApprovals = data?.pendingApprovals ?? []
+
   return (
     <div className="page-transition p-4 sm:p-8">
       <div className="mb-8">
@@ -94,10 +98,12 @@ export function DashboardPage() {
 
         {/* By status */}
         {STATUS_ITEMS.map(({ status, icon: Icon, color, iconColor }, i) => (
-          <div
+          <Link
             key={status}
-            className="card p-5 animate-scale-in"
+            to={`/documents?status=${status}`}
+            className="card p-5 animate-scale-in block transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
             style={{ animationDelay: `${(i + 1) * 60}ms` }}
+            aria-label={`Ver documentos en estado ${status}`}
           >
             <div className={`mb-3 inline-flex rounded-lg p-2.5 ${color} ring-1 ring-black/5`}>
               <Icon className={`h-4 w-4 ${iconColor}`} />
@@ -108,28 +114,128 @@ export function DashboardPage() {
             <p className="mt-1 text-2xl font-bold text-gray-900">
               {data?.byStatus[status] ?? 0}
             </p>
-          </div>
+          </Link>
         ))}
       </div>
 
-      {/* Recent audit events */}
-      <Card className="animate-slide-up">
-        <CardHeader
-          title="Actividad reciente"
-          icon={<Activity className="h-4 w-4 text-primary-600" />}
-        />
-        <ul className="divide-y divide-gray-50">
-          {data?.recentAuditEvents.length === 0 ? (
-            <li className="px-6 py-10 text-center text-sm text-gray-400">
-              Sin actividad reciente
-            </li>
+      {/* Pending approvals + Recent activity */}
+      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Pending approvals */}
+        <Card className="animate-slide-up">
+          <CardHeader
+            title="Aprobaciones pendientes"
+            icon={<AlertCircle className="h-4 w-4 text-amber-600" />}
+            action={
+              pendingApprovals.length > 0 && (
+                <Link to="/documents?status=in_review">
+                  <Button variant="ghost" size="sm">
+                    Ver todas <ArrowRight className="h-3 w-3" />
+                  </Button>
+                </Link>
+              )
+            }
+          />
+          {pendingApprovals.length === 0 ? (
+            <div className="px-6 py-10 text-center text-sm text-gray-400">
+              <CheckCircle className="mx-auto mb-2 h-6 w-6 text-green-400" />
+              No tienes aprobaciones pendientes
+            </div>
           ) : (
-            data?.recentAuditEvents.map((event) => (
-              <AuditRow key={event.id} event={event} />
-            ))
+            <ul className="divide-y divide-gray-50">
+              {pendingApprovals.slice(0, 5).map((item) => (
+                <li key={`${item.documentId}-${item.approverId}`} className="px-6 py-4 transition-colors hover:bg-gray-50">
+                  <Link to={`/documents/${item.documentId}`} className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{item.documentTitle}</p>
+                      <p className="text-xs text-gray-500">
+                        <span className="font-mono">{item.documentCode}</span>
+                        {item.responsibility && <span> · {item.responsibility}</span>}
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 shrink-0">
+                      Pendiente
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           )}
-        </ul>
-      </Card>
+        </Card>
+
+        {/* Recent audit events */}
+        <Card className="animate-slide-up">
+          <CardHeader
+            title="Actividad reciente"
+            icon={<Activity className="h-4 w-4 text-primary-600" />}
+          />
+          <ul className="divide-y divide-gray-50">
+            {data?.recentAuditEvents.length === 0 ? (
+              <li className="px-6 py-10 text-center text-sm text-gray-400">
+                Sin actividad reciente
+              </li>
+            ) : (
+              data?.recentAuditEvents.map((event) => (
+                <AuditRow key={event.id} event={event} />
+              ))
+            )}
+          </ul>
+        </Card>
+      </div>
+
+      {/* Quick access */}
+      <div className="animate-slide-up">
+        <h2 className="mb-4 text-sm font-semibold text-gray-900">Accesos rápidos</h2>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Link
+            to="/documents"
+            className="card flex items-center gap-3 p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-50">
+              <FileText className="h-5 w-5 text-primary-600" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Todos los documentos</p>
+              <p className="text-xs text-gray-500">Ver listado completo</p>
+            </div>
+          </Link>
+          <Link
+            to="/documents/new"
+            className="card flex items-center gap-3 p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-50">
+              <FileText className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Nuevo documento</p>
+              <p className="text-xs text-gray-500">Crear desde cero</p>
+            </div>
+          </Link>
+          <Link
+            to="/documents?status=in_review"
+            className="card flex items-center gap-3 p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-50">
+              <Clock className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">En revisión</p>
+              <p className="text-xs text-gray-500">{data?.byStatus['in_review'] ?? 0} documentos</p>
+            </div>
+          </Link>
+          <Link
+            to={pendingApprovals.length > 0 ? `/documents/${pendingApprovals[0].documentId}` : '/documents?status=in_review'}
+            className="card flex items-center gap-3 p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50">
+              <AlertCircle className="h-5 w-5 text-red-500" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Pendientes</p>
+              <p className="text-xs text-gray-500">{pendingApprovals.length} tareas</p>
+            </div>
+          </Link>
+        </div>
+      </div>
     </div>
   )
 }

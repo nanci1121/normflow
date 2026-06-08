@@ -127,10 +127,19 @@ export interface AuditEvent {
   details: Record<string, unknown>
 }
 
+export interface PendingApprovalItem {
+  documentId: string
+  documentTitle: string
+  documentCode: string
+  approverId: string
+  responsibility?: string
+}
+
 export interface OverviewData {
   documentsTotal: number
   byStatus: Record<string, number>
   recentAuditEvents: AuditEvent[]
+  pendingApprovals: PendingApprovalItem[]
 }
 
 export interface CreateDocumentInput {

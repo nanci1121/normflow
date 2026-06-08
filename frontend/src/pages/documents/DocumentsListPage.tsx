@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { FileText, Plus, Search, FilterX, CheckCircle } from 'lucide-react'
+import { FileText, Plus, Search, FilterX, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { listDocuments } from '@/api/documents'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TableSkeleton } from '@/components/ui/LoadingSkeleton'
+import { Pagination } from '@/components/ui/Pagination'
 import type { ApprovalProgress as ApprovalProgressType, DocumentApproval, DocumentStatus, DocumentCircuitInfo } from '@/types'
 
 function timeAgo(isoDate: string): string {
@@ -90,24 +91,64 @@ function ApprovalProgress({
   )
 }
 
+const PAGE_SIZE = 10
+
+type SortField = 'title' | 'status' | 'updatedAt'
+type SortDir = 'asc' | 'desc'
+
+function SortIcon({ field, currentField, currentDir }: { field: SortField; currentField: SortField; currentDir: SortDir }) {
+  if (field !== currentField) return <ArrowUpDown className="ml-1 h-3 w-3 text-gray-300" />
+  return currentDir === 'asc' ? <ArrowUp className="ml-1 h-3 w-3 text-primary-600" /> : <ArrowDown className="ml-1 h-3 w-3 text-primary-600" />
+}
+
 export function DocumentsListPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [visibilityFilter, setVisibilityFilter] = useState('')
+  const [ownerFilter, setOwnerFilter] = useState('')
+  const [sortField, setSortField] = useState<SortField>('updatedAt')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [page, setPage] = useState(1)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['documents', search],
-    queryFn: () => listDocuments(search || undefined),
+    queryKey: ['documents', search, statusFilter, categoryFilter, visibilityFilter, ownerFilter, sortField, sortDir, page],
+    queryFn: () => listDocuments({
+      search: search || undefined,
+      status: statusFilter || undefined,
+      category: categoryFilter || undefined,
+      visibility: visibilityFilter || undefined,
+      owner: ownerFilter || undefined,
+      sortBy: sortField,
+      sortOrder: sortDir,
+      page,
+      pageSize: PAGE_SIZE,
+    }),
   })
 
-  const filtered = (data ?? []).filter((doc) => {
+  const allItems = data?.items ?? []
+  const totalItems = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
+
+  const filtered = allItems.filter((doc) => {
     if (statusFilter && doc.status !== statusFilter) return false
     if (categoryFilter && doc.category !== categoryFilter) return false
+    if (visibilityFilter && doc.visibility !== visibilityFilter) return false
+    if (ownerFilter && !doc.ownerId.toLowerCase().includes(ownerFilter.toLowerCase())) return false
     return true
   })
+  const categories = [...new Set(allItems.map((d) => d.category) ?? [])].sort()
+  const hasFilters = statusFilter || categoryFilter || visibilityFilter || ownerFilter
 
-  const categories = [...new Set(data?.map((d) => d.category) ?? [])].sort()
-  const hasFilters = statusFilter || categoryFilter
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+    setPage(1)
+  }
 
   return (
     <div className="page-transition p-4 sm:p-8">
@@ -124,20 +165,20 @@ export function DocumentsListPage() {
         </Link>
       </div>
 
-      {/* Filters */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[240px] flex-1">
+        <div className="relative min-w-[200px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
             placeholder="Buscar por código, título, categoría..."
             className="input-default pl-10"
+            aria-label="Buscar documentos"
           />
         </div>
         <Select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
           options={[
             { value: 'draft', label: 'Borrador' },
             { value: 'in_review', label: 'En revisión' },
@@ -145,20 +186,42 @@ export function DocumentsListPage() {
             { value: 'obsolete', label: 'Obsoleto' },
           ]}
           placeholder="Todos los estados"
-          className="min-w-[160px]"
+          className="min-w-[150px]"
+          aria-label="Filtrar por estado"
         />
         <Select
           value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
+          onChange={(e) => { setCategoryFilter(e.target.value); setPage(1) }}
           options={categories.map((c) => ({ value: c, label: c }))}
           placeholder="Todas las categorías"
-          className="min-w-[160px]"
+          className="min-w-[150px]"
+          aria-label="Filtrar por categoría"
         />
+        <Select
+          value={visibilityFilter}
+          onChange={(e) => { setVisibilityFilter(e.target.value); setPage(1) }}
+          options={[
+            { value: 'internal', label: 'Interno' },
+            { value: 'restricted', label: 'Restringido' },
+          ]}
+          placeholder="Todas las visibilidades"
+          className="min-w-[165px]"
+          aria-label="Filtrar por visibilidad"
+        />
+        <div className="relative min-w-[150px]">
+          <input
+            value={ownerFilter}
+            onChange={(e) => { setOwnerFilter(e.target.value); setPage(1) }}
+            placeholder="ID del propietario..."
+            className="input-default"
+            aria-label="Filtrar por propietario"
+          />
+        </div>
         {hasFilters && (
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => { setStatusFilter(''); setCategoryFilter('') }}
+            onClick={() => { setStatusFilter(''); setCategoryFilter(''); setVisibilityFilter(''); setOwnerFilter(''); setPage(1) }}
           >
             <FilterX className="h-4 w-4" />
             Limpiar filtros
@@ -166,7 +229,6 @@ export function DocumentsListPage() {
         )}
       </div>
 
-      {/* Content */}
       {isLoading ? (
         <TableSkeleton rows={5} />
       ) : isError ? (
@@ -200,15 +262,30 @@ export function DocumentsListPage() {
       ) : (
         <div className="overflow-hidden rounded-xl bg-white shadow-card ring-1 ring-gray-200 animate-fade-in">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-left text-sm" aria-label="Lista de documentos">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="px-6 py-3 font-semibold text-gray-500">Código</th>
-                  <th className="px-6 py-3 font-semibold text-gray-500">Título</th>
+                  <th className="px-6 py-3 font-semibold text-gray-500">
+                    <button onClick={() => toggleSort('title')} className="inline-flex items-center hover:text-gray-700" aria-label="Ordenar por título">
+                      Título
+                      <SortIcon field="title" currentField={sortField} currentDir={sortDir} />
+                    </button>
+                  </th>
                   <th className="px-6 py-3 font-semibold text-gray-500">Categoría</th>
-                  <th className="px-6 py-3 font-semibold text-gray-500">Estado</th>
+                  <th className="px-6 py-3 font-semibold text-gray-500">
+                    <button onClick={() => toggleSort('status')} className="inline-flex items-center hover:text-gray-700" aria-label="Ordenar por estado">
+                      Estado
+                      <SortIcon field="status" currentField={sortField} currentDir={sortDir} />
+                    </button>
+                  </th>
                   <th className="px-6 py-3 font-semibold text-gray-500">Flujo</th>
-                  <th className="px-6 py-3 font-semibold text-gray-500">Actualizado</th>
+                  <th className="px-6 py-3 font-semibold text-gray-500">
+                    <button onClick={() => toggleSort('updatedAt')} className="inline-flex items-center hover:text-gray-700" aria-label="Ordenar por actualización">
+                      Actualizado
+                      <SortIcon field="updatedAt" currentField={sortField} currentDir={sortDir} />
+                    </button>
+                  </th>
                   <th className="px-6 py-3" />
                 </tr>
               </thead>
@@ -251,8 +328,9 @@ export function DocumentsListPage() {
               </tbody>
             </table>
           </div>
+          <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
           <div className="border-t border-gray-50 px-6 py-3 text-xs text-gray-400">
-            {filtered.length} documento{filtered.length !== 1 ? 's' : ''}
+            {totalItems} documento{totalItems !== 1 ? 's' : ''}
           </div>
         </div>
       )}

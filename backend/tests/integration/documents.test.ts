@@ -111,9 +111,60 @@ describe("Documents API", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.items).toBeInstanceOf(Array);
+    expect(body.total).toBeGreaterThanOrEqual(1);
     expect(body.items.length).toBeGreaterThanOrEqual(1);
     const found = body.items.find((d: { code: string }) => d.code === "DOC-003");
     expect(found).toBeDefined();
+
+    await app.close();
+  });
+
+  it("GET /api/v1/documents soporta filtros, orden y paginación", async () => {
+    const app = buildApp();
+    await app.ready();
+    const { user } = await createTestUser(prisma);
+    const token = generateToken(user);
+
+    await inject(app, "POST", "/api/v1/documents", {
+      token,
+      payload: {
+        code: "LIST-001",
+        title: "Alpha Doc",
+        description: "desc",
+        category: "quality",
+        standardTags: [],
+        ownerId: user.id,
+        content: "content",
+        createdBy: user.id,
+      },
+    });
+    await inject(app, "POST", "/api/v1/documents", {
+      token,
+      payload: {
+        code: "LIST-002",
+        title: "Beta Doc",
+        description: "desc",
+        category: "safety",
+        standardTags: [],
+        ownerId: user.id,
+        visibility: "restricted",
+        content: "content",
+        createdBy: user.id,
+      },
+    });
+
+    const filteredRes = await inject(
+      app,
+      "GET",
+      "/api/v1/documents?category=safety&visibility=restricted&sortBy=title&sortOrder=asc&page=1&pageSize=1",
+      { token }
+    );
+
+    expect(filteredRes.statusCode).toBe(200);
+    const filteredBody = filteredRes.json();
+    expect(filteredBody.total).toBe(1);
+    expect(filteredBody.items).toHaveLength(1);
+    expect(filteredBody.items[0].code).toBe("LIST-002");
 
     await app.close();
   });
