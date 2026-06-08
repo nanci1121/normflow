@@ -1,19 +1,28 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { ShieldCheck, LayoutDashboard, FileText, LogOut, User, Menu, X, Users, ListChecks } from 'lucide-react'
+import { ShieldCheck, LayoutDashboard, FileText, LogOut, User, Menu, X, Users, ListChecks, Moon, Sun, Languages } from 'lucide-react'
 import { clsx } from 'clsx'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/contexts/AuthContext'
+import { useTheme } from '@/contexts/ThemeContext'
 
 const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Inicio' },
-  { to: '/documents', icon: FileText, label: 'Documentos' },
+  { to: '/dashboard', icon: LayoutDashboard, key: 'dashboard' },
+  { to: '/documents', icon: FileText, key: 'documents' },
 ]
 
 export function AppLayout() {
   const { user, logout } = useAuth()
+  const { theme, toggleTheme } = useTheme()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const isAdmin = user?.role === 'admin'
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  const toggleLanguage = () => {
+    const next = i18n.language === 'en' ? 'es' : 'en'
+    i18n.changeLanguage(next)
+  }
 
   const handleLogout = async () => {
     await logout()
@@ -21,7 +30,7 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-950">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -53,7 +62,7 @@ export function AppLayout() {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 px-3 py-4">
-          {navItems.map(({ to, icon: Icon, label }) => (
+          {navItems.map(({ to, icon: Icon, key }) => (
             <NavLink
               key={to}
               to={to}
@@ -68,7 +77,7 @@ export function AppLayout() {
               }
             >
               <Icon className="h-5 w-5 shrink-0" />
-              {label}
+              {t(`nav.${key}`)}
             </NavLink>
           ))}
           {isAdmin && (
@@ -86,7 +95,7 @@ export function AppLayout() {
                 }
               >
                 <Users className="h-5 w-5 shrink-0" />
-                Usuarios
+                {t('nav.users')}
               </NavLink>
               <NavLink
                 to="/admin/approval-workflows"
@@ -101,7 +110,7 @@ export function AppLayout() {
                 }
               >
                 <ListChecks className="h-5 w-5 shrink-0" />
-                Circuitos
+                {t('nav.workflows')}
               </NavLink>
             </>
           )}
@@ -119,11 +128,27 @@ export function AppLayout() {
             </div>
           </div>
           <button
+            onClick={toggleTheme}
+            className="mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-primary-300 transition-all duration-200 hover:bg-primary-800 hover:text-white"
+            aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
+          >
+            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {t(`nav.theme.${theme === 'dark' ? 'light' : 'dark'}`)}
+          </button>
+          <button
+            onClick={toggleLanguage}
+            className="mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-primary-300 transition-all duration-200 hover:bg-primary-800 hover:text-white"
+            aria-label={i18n.language === 'en' ? 'Cambiar a español' : 'Switch to English'}
+          >
+            <Languages className="h-4 w-4" />
+            {t(`nav.language.${i18n.language === 'en' ? 'es' : 'en'}`)}
+          </button>
+          <button
             onClick={handleLogout}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-primary-300 transition-all duration-200 hover:bg-red-600/20 hover:text-red-400"
           >
             <LogOut className="h-4 w-4" />
-            Cerrar sesión
+            {t('nav.logout')}
           </button>
         </div>
       </aside>
@@ -131,15 +156,15 @@ export function AppLayout() {
       {/* Main content area */}
       <main className="flex flex-1 flex-col overflow-auto">
         {/* Mobile header */}
-        <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white/80 px-4 py-3 backdrop-blur-md lg:hidden">
+        <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white/80 px-4 py-3 backdrop-blur-md dark:border-gray-700 dark:bg-gray-900/80 lg:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="rounded-lg p-1.5 text-gray-600 hover:bg-gray-100"
+            className="rounded-lg p-1.5 text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
           >
             <Menu className="h-5 w-5" />
           </button>
           <ShieldCheck className="h-5 w-5 text-primary-600" />
-          <span className="text-sm font-bold text-gray-900">QMS Platform</span>
+          <span className="text-sm font-bold text-gray-900 dark:text-gray-100">QMS Platform</span>
         </div>
 
         <div className="flex-1">
