@@ -45,9 +45,6 @@ describe('i18n', () => {
   })
 
   it('tiene todas las claves en ambos idiomas', () => {
-    const esKeys = Object.keys(i18n.getResourceBundle('es', 'translation'))
-    const enKeys = Object.keys(i18n.getResourceBundle('en', 'translation'))
-
     function flatten(obj: Record<string, unknown>, prefix = ''): string[] {
       return Object.entries(obj).flatMap(([key, value]) =>
         typeof value === 'object' && value !== null
