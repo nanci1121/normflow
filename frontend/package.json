@@ -4,11 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.config.mjs --port 5173",
-    "build": "tsc -b && vite build --config vite.config.mjs",
-    "preview": "vite preview --config vite.config.mjs",
-    "test": "vitest run --config vitest.config.mjs",
-    "test:watch": "vitest --config vitest.config.mjs"
+    "dev": "vite --config vite.config.ts --port 5173",
+    "build": "tsc -b && vite build --config vite.config.ts",
+    "preview": "vite preview --config vite.config.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
