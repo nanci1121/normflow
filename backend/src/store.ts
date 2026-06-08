@@ -664,24 +664,32 @@ export class DocumentStore {
 
     const allApprovals = await prisma.documentApproval.findMany({ where: { documentId } });
     const allApproved = allApprovals.every((a) => a.status === "approved");
+    let transitionedToApproved = false;
 
     if (!isRejected && allApproved) {
-      await prisma.document.update({
-        where: { id: documentId },
+      const transition = await prisma.document.updateMany({
+        where: { id: documentId, status: "in_review" },
         data: { status: "approved" },
       });
-      updated.status = "approved";
+      transitionedToApproved = transition.count > 0;
+      if (transitionedToApproved) {
+        updated.status = "approved";
+      }
     }
 
     await prisma.auditEvent.create({
       data: {
         actorId: input.actorId,
-        action: isRejected ? "document.rejected" : "document.approved",
+        action: isRejected
+          ? "document.rejected"
+          : transitionedToApproved
+            ? "document.approved"
+            : "document.approval_recorded",
         entityId: documentId,
         entityType: "document",
         details: {
           from: isRejected ? "in_review" : document.status,
-          to: isRejected ? "draft" : "approved",
+          to: isRejected ? "draft" : transitionedToApproved ? "approved" : document.status,
           approverId: input.approverId,
           comment: input.comment,
         },
