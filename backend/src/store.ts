@@ -14,6 +14,9 @@ import {
   HttpError,
   DocumentStatus,
   UserContext,
+  ListDocumentsOptions,
+  ListDocumentsResult,
+  PendingApprovalItem,
 } from "./types";
 import type { EmailService } from "./email";
 import { submissionEmail, approvalAssignedEmail, approvedEmail, rejectedEmail } from "./email/templates";
@@ -194,26 +197,26 @@ export class DocumentStore {
     return false;
   }
 
-  async listDocuments(query?: string, user?: UserContext): Promise<DocumentRecord[]> {
-    const normalizedQuery = query?.trim().toLowerCase();
+  async listDocuments(options?: ListDocumentsOptions, user?: UserContext): Promise<ListDocumentsResult> {
+    const normalizedQuery = options?.search?.trim().toLowerCase();
     const documents = await prisma.document.findMany({
       include: {
         versions: { orderBy: { createdAt: "desc" } },
         approvals: true,
         grants: { select: { userId: true } },
       },
-      orderBy: { createdAt: "desc" },
     });
 
     const filtered = documents.filter((doc) => this.canViewDocument(doc as never, user));
-
     const mapped = filtered.map((d) => mapDocument(d as never));
 
-    if (!normalizedQuery) {
-      return this.enrichWithCircuits(mapped);
-    }
+    const queried = mapped.filter((doc) => {
+      if (options?.status && doc.status !== options.status) return false;
+      if (options?.category && doc.category !== options.category) return false;
+      if (options?.visibility && doc.visibility !== options.visibility) return false;
+      if (options?.owner && !doc.ownerId.toLowerCase().includes(options.owner.toLowerCase())) return false;
+      if (!normalizedQuery) return true;
 
-    const filteredMapped = mapped.filter((doc) => {
       const haystack = [
         doc.code,
         doc.title,
@@ -228,7 +231,31 @@ export class DocumentStore {
       return haystack.includes(normalizedQuery);
     });
 
-    return this.enrichWithCircuits(filteredMapped);
+    const sorted = [...queried].sort((a, b) => {
+      const direction = options?.sortOrder === "asc" ? 1 : -1;
+      const sortBy = options?.sortBy ?? "updatedAt";
+
+      if (sortBy === "title") {
+        return a.title.localeCompare(b.title) * direction;
+      }
+
+      if (sortBy === "status") {
+        return a.status.localeCompare(b.status) * direction;
+      }
+
+      return (new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()) * direction;
+    });
+
+    const total = sorted.length;
+    const page = Math.max(1, options?.page ?? 1);
+    const pageSize = options?.pageSize && options.pageSize > 0 ? options.pageSize : total > 0 ? total : 1;
+    const start = (page - 1) * pageSize;
+    const paginated = sorted.slice(start, start + pageSize);
+
+    return {
+      items: await this.enrichWithCircuits(paginated),
+      total,
+    };
   }
 
   async getDocument(id: string, user?: UserContext): Promise<DocumentRecord | undefined> {
@@ -836,5 +863,29 @@ export class DocumentStore {
       grantedBy: g.grantedBy,
       createdAt: toIsoString(g.createdAt),
     }));
+  }
+
+  async getPendingApprovals(userId: string): Promise<PendingApprovalItem[]> {
+    const approvals = await prisma.documentApproval.findMany({
+      where: { approverId: userId, status: "pending" },
+    });
+
+    const documentIds = [...new Set(approvals.map((a) => a.documentId))];
+    const documents = await prisma.document.findMany({
+      where: { id: { in: documentIds } },
+      select: { id: true, title: true, code: true },
+    });
+    const docMap = new Map(documents.map((d) => [d.id, d]));
+
+    return approvals.map((a) => {
+      const doc = docMap.get(a.documentId);
+      return {
+        documentId: a.documentId,
+        documentTitle: doc?.title ?? "Unknown",
+        documentCode: doc?.code ?? "???",
+        approverId: a.approverId,
+        responsibility: a.responsibility ?? undefined,
+      };
+    });
   }
 }

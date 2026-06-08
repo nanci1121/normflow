@@ -49,7 +49,12 @@ export function buildApp(emailService?: ReturnType<typeof createEmailService>) {
 
   app.get("/api/v1/overview", async (request) => {
     const user = getUserContext(request.headers.authorization);
-    const documents = await store.listDocuments(undefined, user);
+    const { items: documents } = await store.listDocuments(undefined, user);
+
+    const pendingApprovals = user
+      ? await store.getPendingApprovals(user.id)
+      : [];
+
     return {
       documentsTotal: documents.length,
       byStatus: documents.reduce<Record<string, number>>((accumulator, document) => {
@@ -57,6 +62,7 @@ export function buildApp(emailService?: ReturnType<typeof createEmailService>) {
         return accumulator;
       }, {}),
       recentAuditEvents: (await store.getAuditEvents()).slice(0, 10),
+      pendingApprovals,
     };
   });
 
@@ -211,11 +217,34 @@ export function buildApp(emailService?: ReturnType<typeof createEmailService>) {
   );
 
   app.get("/api/v1/documents", async (request) => {
-    const search = (request.query as { search?: string }).search;
-    const user = getUserContext(request.headers.authorization);
-    return {
-      items: await store.listDocuments(search, user),
+    const query = request.query as {
+      search?: string;
+      status?: "draft" | "in_review" | "approved" | "obsolete";
+      category?: string;
+      visibility?: "internal" | "restricted";
+      owner?: string;
+      sortBy?: "title" | "status" | "updatedAt";
+      sortOrder?: "asc" | "desc";
+      page?: string | number;
+      pageSize?: string | number;
     };
+    const user = getUserContext(request.headers.authorization);
+    const page = typeof query.page === "string" ? Number(query.page) : query.page;
+    const pageSize = typeof query.pageSize === "string" ? Number(query.pageSize) : query.pageSize;
+    return store.listDocuments(
+      {
+        search: query.search,
+        status: query.status,
+        category: query.category,
+        visibility: query.visibility,
+        owner: query.owner,
+        sortBy: query.sortBy,
+        sortOrder: query.sortOrder,
+        page: Number.isFinite(page as number) ? (page as number) : undefined,
+        pageSize: Number.isFinite(pageSize as number) ? (pageSize as number) : undefined,
+      },
+      user
+    );
   });
 
   app.get("/api/v1/documents/:id", async (request, reply) => {

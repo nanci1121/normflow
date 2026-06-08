@@ -171,6 +171,31 @@ export interface ChangePasswordInput {
   newPassword: string;
 }
 
+export interface PendingApprovalItem {
+  documentId: string;
+  documentTitle: string;
+  documentCode: string;
+  approverId: string;
+  responsibility?: string;
+}
+
+export interface ListDocumentsOptions {
+  search?: string;
+  status?: DocumentStatus;
+  category?: string;
+  visibility?: "internal" | "restricted";
+  owner?: string;
+  sortBy?: "title" | "status" | "updatedAt";
+  sortOrder?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ListDocumentsResult {
+  items: DocumentRecord[];
+  total: number;
+}
+
 export interface UserContext {
   id: string;
   role: UserRole;

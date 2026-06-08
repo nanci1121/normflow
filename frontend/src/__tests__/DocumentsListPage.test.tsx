@@ -59,7 +59,7 @@ describe('DocumentsListPage', () => {
   })
 
   it('renderiza el título y botón de crear', async () => {
-    mockListDocuments.mockResolvedValue([])
+    mockListDocuments.mockResolvedValue({ items: [], total: 0 })
     renderWithProviders(<DocumentsListPage />)
     expect(screen.getByText('Documentos')).toBeInTheDocument()
     expect(screen.getByText('Nuevo documento')).toBeInTheDocument()
@@ -74,7 +74,7 @@ describe('DocumentsListPage', () => {
   })
 
   it('muestra lista de documentos', async () => {
-    mockListDocuments.mockResolvedValue(mockDocs)
+    mockListDocuments.mockResolvedValue({ items: mockDocs, total: mockDocs.length })
     renderWithProviders(<DocumentsListPage />)
 
     expect(await screen.findByText('QA-MAN-001')).toBeInTheDocument()
@@ -83,7 +83,7 @@ describe('DocumentsListPage', () => {
   })
 
   it('muestra estado vacío cuando no hay documentos', async () => {
-    mockListDocuments.mockResolvedValue([])
+    mockListDocuments.mockResolvedValue({ items: [], total: 0 })
     renderWithProviders(<DocumentsListPage />)
 
     expect(await screen.findByText('No hay documentos todavía')).toBeInTheDocument()
@@ -91,7 +91,7 @@ describe('DocumentsListPage', () => {
   })
 
   it('filtra por estado', async () => {
-    mockListDocuments.mockResolvedValue(mockDocs)
+    mockListDocuments.mockResolvedValue({ items: mockDocs, total: mockDocs.length })
     renderWithProviders(<DocumentsListPage />)
 
     expect(await screen.findByText('QA-MAN-001')).toBeInTheDocument()
@@ -105,7 +105,7 @@ describe('DocumentsListPage', () => {
   })
 
   it('enlaces a detalle funcionan', async () => {
-    mockListDocuments.mockResolvedValue(mockDocs)
+    mockListDocuments.mockResolvedValue({ items: mockDocs, total: mockDocs.length })
     renderWithProviders(<DocumentsListPage />)
 
     await waitFor(() => {
@@ -116,7 +116,7 @@ describe('DocumentsListPage', () => {
   })
 
   it('columna Flujo: muestra Completo para documento aprobado', async () => {
-    mockListDocuments.mockResolvedValue(mockDocs)
+    mockListDocuments.mockResolvedValue({ items: mockDocs, total: mockDocs.length })
     renderWithProviders(<DocumentsListPage />)
 
     expect(await screen.findByText('Completo')).toBeInTheDocument()
@@ -124,7 +124,7 @@ describe('DocumentsListPage', () => {
   })
 
   it('columna Flujo: muestra Sin flujo para draft sin aprobaciones', async () => {
-    mockListDocuments.mockResolvedValue(mockDocs)
+    mockListDocuments.mockResolvedValue({ items: mockDocs, total: mockDocs.length })
     renderWithProviders(<DocumentsListPage />)
 
     expect(await screen.findByText('Sin flujo')).toBeInTheDocument()
@@ -145,7 +145,7 @@ describe('DocumentsListPage', () => {
         ],
       },
     ]
-    mockListDocuments.mockResolvedValue(inReviewDocs)
+    mockListDocuments.mockResolvedValue({ items: inReviewDocs, total: inReviewDocs.length })
     renderWithProviders(<DocumentsListPage />)
 
     expect(await screen.findByText('Paso 2/3')).toBeInTheDocument()
@@ -175,19 +175,19 @@ describe('DocumentsListPage', () => {
         },
       },
     ]
-    mockListDocuments.mockResolvedValue(docsWithCircuit)
+    mockListDocuments.mockResolvedValue({ items: docsWithCircuit, total: docsWithCircuit.length })
     renderWithProviders(<DocumentsListPage />)
 
     await waitFor(() => {
       const circuitBadges = screen.getAllByText((_content, element) => {
-        return element.className?.includes?.('bg-primary-50') ?? false
+        return element instanceof HTMLElement && element.className.includes('bg-primary-50')
       })
       expect(circuitBadges.length).toBe(2)
     })
   })
 
   it('columna Flujo: muestra Sin circuito cuando no hay approvalCircuit', async () => {
-    mockListDocuments.mockResolvedValue(mockDocs)
+    mockListDocuments.mockResolvedValue({ items: mockDocs, total: mockDocs.length })
     renderWithProviders(<DocumentsListPage />)
 
     expect(await screen.findAllByText('Sin circuito')).toHaveLength(2)
@@ -207,7 +207,7 @@ describe('DocumentsListPage', () => {
         ],
       },
     ]
-    mockListDocuments.mockResolvedValue(flatDocs)
+    mockListDocuments.mockResolvedValue({ items: flatDocs, total: flatDocs.length })
     renderWithProviders(<DocumentsListPage />)
 
     expect(await screen.findByText('1/2')).toBeInTheDocument()

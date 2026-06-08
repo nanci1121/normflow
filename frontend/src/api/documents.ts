@@ -12,10 +12,21 @@ export async function getOverview(): Promise<OverviewData> {
   return data
 }
 
-export async function listDocuments(search?: string): Promise<DocumentSummary[]> {
-  const params = search ? { search } : {}
-  const { data } = await api.get<{ items: DocumentSummary[] }>('/documents', { params })
-  return data.items
+export interface ListDocumentsParams {
+  search?: string
+  status?: string
+  category?: string
+  visibility?: string
+  owner?: string
+  sortBy?: string
+  sortOrder?: 'asc' | 'desc'
+  page?: number
+  pageSize?: number
+}
+
+export async function listDocuments(params?: ListDocumentsParams): Promise<{ items: DocumentSummary[]; total: number }> {
+  const { data } = await api.get<{ items: DocumentSummary[]; total: number }>('/documents', { params })
+  return data
 }
 
 export async function getDocument(id: string): Promise<DocumentDetail> {

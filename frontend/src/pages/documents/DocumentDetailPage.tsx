@@ -24,8 +24,10 @@ import { Textarea } from '@/components/ui/Textarea'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/LoadingSkeleton'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/contexts/AuthContext'
-import type { DocumentDetail, DocumentStatus, DocumentVersion, DocumentCircuitInfo } from '@/types'
+import type { DocumentDetail, DocumentStatus, DocumentVersion, DocumentCircuitInfo, DocumentApproval } from '@/types'
 
 type Tab = 'info' | 'versions' | 'approvals' | 'signatures' | 'audit'
 
@@ -37,6 +39,14 @@ const ACTION_LABELS: Record<string, string> = {
   'document.obsoleted':     'Marcado como obsoleto',
   'document.version_added': 'Nueva versión añadida',
   'document.signed':        'Firmado electrónicamente',
+}
+
+const STATUS_TRANSITION_LABELS: Record<string, { from: string; to: string }> = {
+  'document.created':       { from: '—', to: 'Borrador' },
+  'document.submitted':     { from: 'Borrador', to: 'En revisión' },
+  'document.approved':      { from: 'En revisión', to: 'Aprobado' },
+  'document.rejected':      { from: 'En revisión', to: 'Borrador' },
+  'document.obsoleted':     { from: 'Aprobado', to: 'Obsoleto' },
 }
 
 function timeAgo(isoDate: string): string {
@@ -145,6 +155,7 @@ function VersionsTab({ versions }: { versions: DocumentVersion[] }) {
               <button
                 onClick={() => setExpandedId(expandedId === v.id ? null : v.id)}
                 className="flex w-full items-center justify-between px-6 py-4 text-left transition-colors hover:bg-gray-50"
+                aria-expanded={expandedId === v.id}
               >
                 <div className="flex items-center gap-3">
                   <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
@@ -188,13 +199,11 @@ function CircuitSection({ circuit, approvals }: { circuit?: DocumentCircuitInfo;
       <div className="space-y-3">
         {circuit.steps.map((step, idx) => {
           const approval = approvalByApproverId.get(step.approverId)
-          const status = approval?.status ?? 'pending'
           const isActive = approval?.status === 'pending'
           const isDone = approval?.status === 'approved'
           const isRejected = approval?.status === 'rejected'
           return (
             <div key={step.id} className="flex items-start gap-3">
-              {/* Step indicator */}
               <div className="flex flex-col items-center">
                 <div
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
@@ -213,7 +222,6 @@ function CircuitSection({ circuit, approvals }: { circuit?: DocumentCircuitInfo;
                   <div className="mt-1 h-6 w-px bg-gray-200" />
                 )}
               </div>
-              {/* Step info */}
               <div className="flex-1 pb-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-gray-900">{step.approverName}</p>
@@ -243,7 +251,9 @@ function CircuitSection({ circuit, approvals }: { circuit?: DocumentCircuitInfo;
 function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const { showToast } = useToast()
   const [comment, setComment] = useState('')
+  const [confirmAction, setConfirmAction] = useState<'approve' | 'reject' | null>(null)
 
   const circuit = doc.approvalCircuit
 
@@ -254,7 +264,13 @@ function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
         : []
       return submitDocument(doc.id, user!.id, approverIds)
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['document', doc.id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['document', doc.id] })
+      showToast('success', 'Documento enviado a revisión correctamente')
+    },
+    onError: () => {
+      showToast('error', 'Error al enviar el documento a revisión')
+    },
   })
 
   const resolveMutation = useMutation({
@@ -262,7 +278,13 @@ function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
       resolveApproval(doc.id, user!.id, decision, comment || undefined),
     onSuccess: () => {
       setComment('')
+      setConfirmAction(null)
       queryClient.invalidateQueries({ queryKey: ['document', doc.id] })
+      showToast('success', 'Decisión registrada correctamente')
+    },
+    onError: () => {
+      setConfirmAction(null)
+      showToast('error', 'Error al registrar la decisión')
     },
   })
 
@@ -271,10 +293,8 @@ function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Circuit info */}
       <CircuitSection circuit={circuit as DocumentCircuitInfo | undefined} approvals={doc.approvals} />
 
-      {/* Submit section */}
       {doc.status === 'draft' && (
         <Card>
           <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-900">
@@ -326,7 +346,6 @@ function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
         </Card>
       )}
 
-      {/* My decision */}
       {doc.status === 'in_review' && myPendingApproval && (
         <Card>
           <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-900">
@@ -343,19 +362,18 @@ function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
             onChange={(e) => setComment(e.target.value)}
             placeholder="Comentario (opcional)"
             rows={2}
+            aria-label="Comentario de aprobación"
           />
           <div className="mt-3 flex items-center gap-3">
             <Button
-              onClick={() => resolveMutation.mutate('approved')}
-              isLoading={resolveMutation.isPending}
+              onClick={() => setConfirmAction('approve')}
             >
               <CheckCircle className="h-4 w-4" />
               Aprobar
             </Button>
             <Button
               variant="danger"
-              onClick={() => resolveMutation.mutate('rejected')}
-              isLoading={resolveMutation.isPending}
+              onClick={() => setConfirmAction('reject')}
             >
               <XCircle className="h-4 w-4" />
               Rechazar
@@ -364,7 +382,6 @@ function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
         </Card>
       )}
 
-      {/* Approval history */}
       <Card padding={false}>
         <CardHeader
           title="Historial de aprobaciones"
@@ -404,6 +421,28 @@ function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
           </ul>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={confirmAction === 'approve'}
+        title="Aprobar documento"
+        message="¿Estás seguro de que quieres aprobar este documento? Esta acción no se puede deshacer."
+        confirmLabel="Aprobar"
+        confirmVariant="primary"
+        isLoading={resolveMutation.isPending}
+        onConfirm={() => resolveMutation.mutate('approved')}
+        onCancel={() => setConfirmAction(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmAction === 'reject'}
+        title="Rechazar documento"
+        message="¿Estás seguro de que quieres rechazar este documento? Volverá a estado borrador."
+        confirmLabel="Rechazar"
+        confirmVariant="danger"
+        isLoading={resolveMutation.isPending}
+        onConfirm={() => resolveMutation.mutate('rejected')}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   )
 }
@@ -411,6 +450,7 @@ function ApprovalsTab({ doc }: { doc: DocumentDetail }) {
 function SignaturesTab({ doc }: { doc: DocumentDetail }) {
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const { showToast } = useToast()
   const [signatureValue, setSignatureValue] = useState('')
 
   const signMutation = useMutation({
@@ -418,6 +458,10 @@ function SignaturesTab({ doc }: { doc: DocumentDetail }) {
     onSuccess: () => {
       setSignatureValue('')
       queryClient.invalidateQueries({ queryKey: ['document', doc.id] })
+      showToast('success', 'Documento firmado correctamente')
+    },
+    onError: () => {
+      showToast('error', 'Error al firmar el documento')
     },
   })
 
@@ -481,35 +525,60 @@ function AuditTab({ doc }: { doc: DocumentDetail }) {
   return (
     <Card padding={false} className="animate-fade-in">
       <CardHeader
-        title="Auditoría"
+        title="Auditoría — Historial de cambios de estado"
         icon={<Activity className="h-4 w-4" />}
       />
       {!events || events.length === 0 ? (
         <div className="p-6 text-center text-sm text-gray-400">Sin eventos de auditoría</div>
       ) : (
         <ul className="divide-y divide-gray-50">
-          {events.map((event) => (
-            <li key={event.id} className="px-6 py-4 transition-colors hover:bg-gray-50">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900">
-                    {ACTION_LABELS[event.action] ?? event.action}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Actor: <span className="font-mono">{event.actorId.slice(0, 12)}…</span>
-                  </p>
-                  {event.details && (
-                    <pre className="mt-1 overflow-x-auto text-xs text-gray-400">
-                      {JSON.stringify(event.details, null, 2)}
-                    </pre>
-                  )}
+          {events.map((event) => {
+            const transition = STATUS_TRANSITION_LABELS[event.action]
+            return (
+              <li key={event.id} className="px-6 py-4 transition-colors hover:bg-gray-50">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="mt-0.5 flex flex-col items-center">
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-1 ${
+                        event.action === 'document.approved' ? 'bg-green-100 text-green-700 ring-green-300' :
+                        event.action === 'document.rejected' ? 'bg-red-100 text-red-700 ring-red-300' :
+                        event.action === 'document.obsoleted' ? 'bg-gray-100 text-gray-600 ring-gray-300' :
+                        event.action === 'document.submitted' ? 'bg-amber-100 text-amber-700 ring-amber-300' :
+                        'bg-primary-50 text-primary-700 ring-primary-200'
+                      }`}>
+                        {event.action === 'document.created' ? 1 :
+                         event.action === 'document.submitted' ? 2 :
+                         event.action === 'document.approved' ? 3 :
+                         event.action === 'document.rejected' ? '↩' :
+                         event.action === 'document.obsoleted' ? 4 : '*'}
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900">
+                        {ACTION_LABELS[event.action] ?? event.action}
+                      </p>
+                      {transition && (
+                        <p className="text-xs text-gray-500">
+                          {transition.from} → {transition.to}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-400">
+                        Actor: <span className="font-mono">{event.actorId.slice(0, 12)}…</span>
+                      </p>
+                      {event.details && (
+                        <pre className="mt-1 overflow-x-auto text-xs text-gray-400 bg-gray-50 rounded p-2">
+                          {JSON.stringify(event.details, null, 2)}
+                        </pre>
+                      )}
+                    </div>
+                  </div>
+                  <span className="shrink-0 whitespace-nowrap text-xs text-gray-400">
+                    {timeAgo(event.timestamp)}
+                  </span>
                 </div>
-                <span className="shrink-0 whitespace-nowrap text-xs text-gray-400">
-                  {timeAgo(event.timestamp)}
-                </span>
-              </div>
-            </li>
-          ))}
+              </li>
+            )
+          })}
         </ul>
       )}
     </Card>
@@ -521,8 +590,10 @@ export function DocumentDetailPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const { showToast } = useToast()
   const [activeTab, setActiveTab] = useState<Tab>('info')
   const [obsoleteReason, setObsoleteReason] = useState('')
+  const [showObsoleteConfirm, setShowObsoleteConfirm] = useState(false)
 
   const { data: doc, isLoading, isError } = useQuery({
     queryKey: ['document', id],
@@ -534,7 +605,13 @@ export function DocumentDetailPage() {
     mutationFn: () => obsoleteDocument(doc!.id, user!.id, obsoleteReason),
     onSuccess: () => {
       setObsoleteReason('')
+      setShowObsoleteConfirm(false)
       queryClient.invalidateQueries({ queryKey: ['document', doc!.id] })
+      showToast('success', 'Documento marcado como obsoleto')
+    },
+    onError: () => {
+      setShowObsoleteConfirm(false)
+      showToast('error', 'Error al marcar documento como obsoleto')
     },
   })
 
@@ -584,7 +661,6 @@ export function DocumentDetailPage() {
 
   return (
     <div className="page-transition p-4 sm:p-8">
-      {/* Back + title + status */}
       <div className="mb-6">
         <button
           onClick={() => navigate('/documents')}
@@ -611,11 +687,11 @@ export function DocumentDetailPage() {
                 onChange={(e) => setObsoleteReason(e.target.value)}
                 placeholder="Motivo de obsolecencia"
                 className="w-56 sm:w-64"
+                aria-label="Motivo de obsolecencia"
               />
               <Button
                 variant="danger"
-                onClick={() => obsoleteMutation.mutate()}
-                isLoading={obsoleteMutation.isPending}
+                onClick={() => setShowObsoleteConfirm(true)}
                 disabled={!obsoleteReason.trim()}
               >
                 <Trash2 className="h-4 w-4" />
@@ -626,13 +702,14 @@ export function DocumentDetailPage() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="mb-6 border-b border-gray-200">
-        <nav className="flex gap-6 overflow-x-auto scrollbar-thin">
+        <nav className="flex gap-6 overflow-x-auto scrollbar-thin" role="tablist">
           {tabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => setActiveTab(key)}
+              role="tab"
+              aria-selected={activeTab === key}
               className={`flex shrink-0 items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium transition-all duration-200 ${
                 activeTab === key
                   ? 'border-primary-600 text-primary-600'
@@ -646,12 +723,22 @@ export function DocumentDetailPage() {
         </nav>
       </div>
 
-      {/* Tab content */}
       {activeTab === 'info' && <InfoTab doc={doc} />}
       {activeTab === 'versions' && <VersionsTab versions={doc.versions} />}
       {activeTab === 'approvals' && <ApprovalsTab doc={doc} />}
       {activeTab === 'signatures' && <SignaturesTab doc={doc} />}
       {activeTab === 'audit' && <AuditTab doc={doc} />}
+
+      <ConfirmDialog
+        open={showObsoleteConfirm}
+        title="Marcar documento como obsoleto"
+        message="¿Estás seguro de que quieres marcar este documento como obsoleto? Esta acción no se puede deshacer."
+        confirmLabel="Sí, marcar como obsoleto"
+        confirmVariant="danger"
+        isLoading={obsoleteMutation.isPending}
+        onConfirm={() => obsoleteMutation.mutate()}
+        onCancel={() => setShowObsoleteConfirm(false)}
+      />
     </div>
   )
 }
